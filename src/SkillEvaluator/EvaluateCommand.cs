@@ -44,36 +44,31 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
             return 1;
         }
 
-        Providers.IProvider provider = settings.Provider switch
-        {
-            "none"      => new Providers.StaticOnlyProvider(),
-            "anthropic" => new Providers.AnthropicProvider(new HttpClient(), settings.Model ?? "claude-sonnet-4-6"),
-            "kiro"      => new Providers.KiroProvider(),
-            _           => throw new NotSupportedException($"Provider '{settings.Provider}' not yet wired up."),
-        };
+        using var provider = BuildProvider(settings);
 
         var sw = Stopwatch.StartNew();
         var results = new ConcurrentBag<ArtifactResult>();
+        var wasCancelled = false;
 
-        await Parallel.ForEachAsync(
-            artifacts,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = settings.Parallel,
-                CancellationToken = cancellationToken,
-            },
-            async (artifact, ct) =>
-            {
-                var staticReport = StaticAnalyzer.Analyze(artifact);
-                RubricResult? rubric = null;
-                if (!staticReport.HasBlocker)
+        try
+        {
+            await Parallel.ForEachAsync(
+                artifacts,
+                new ParallelOptions
                 {
-                    rubric = await provider.GradeAsync(artifact, Rubric.BuildUserPrompt(artifact), ct);
+                    MaxDegreeOfParallelism = settings.Parallel,
+                    CancellationToken = cancellationToken,
+                },
+                async (artifact, ct) =>
+                {
+                    results.Add(await GradeArtifact(provider, artifact, ct));
                 }
-                var verdict = VerdictDeriver.Derive(staticReport, rubric);
-                results.Add(new ArtifactResult(artifact, staticReport, rubric, verdict, ProviderError: null));
-            }
-        );
+            );
+        }
+        catch (OperationCanceledException)
+        {
+            wasCancelled = true;
+        }
 
         Directory.CreateDirectory(settings.OutDir);
         var md = Reporter.BuildMarkdown(
@@ -82,9 +77,55 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
             model: settings.Model,
             duration: sw.Elapsed
         );
-        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, cancellationToken);
+        // Write with CancellationToken.None so Ctrl-C doesn't discard the
+        // partial report we just built from results already in hand.
+        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, CancellationToken.None);
 
-        Console.WriteLine($"Wrote {results.Count} verdicts to {settings.OutDir}/report.md in {sw.Elapsed.TotalSeconds:F1}s");
-        return 0;
+        var completed = results.Count;
+        var total = artifacts.Count;
+        var prefix = wasCancelled ? "Cancelled after " : "Wrote ";
+        Console.WriteLine($"{prefix}{completed}/{total} verdicts to {settings.OutDir}/report.md in {sw.Elapsed.TotalSeconds:F1}s");
+        return wasCancelled ? 130 : 0;
     }
+
+    private static async Task<ArtifactResult> GradeArtifact(
+        Providers.IProvider provider,
+        Artifact artifact,
+        CancellationToken ct
+    )
+    {
+        var staticReport = StaticAnalyzer.Analyze(artifact);
+        RubricResult? rubric = null;
+        string? providerError = null;
+
+        if (!staticReport.HasBlocker)
+        {
+            try
+            {
+                rubric = await provider.GradeAsync(artifact, Rubric.BuildUserPrompt(artifact), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // Honor cancellation — let Parallel.ForEachAsync tear down.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Per-artifact failure: capture so the report still contains
+                // the static findings and other artifacts aren't lost.
+                providerError = ex.Message;
+            }
+        }
+
+        var verdict = VerdictDeriver.Derive(staticReport, rubric);
+        return new ArtifactResult(artifact, staticReport, rubric, verdict, providerError);
+    }
+
+    private static Providers.IProvider BuildProvider(Settings settings) => settings.Provider switch
+    {
+        "none"      => new Providers.StaticOnlyProvider(),
+        "anthropic" => new Providers.AnthropicProvider(settings.Model ?? "claude-sonnet-4-6"),
+        "kiro"      => new Providers.KiroProvider(),
+        _           => throw new NotSupportedException($"Unknown provider: {settings.Provider}"),
+    };
 }

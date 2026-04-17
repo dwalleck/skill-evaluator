@@ -8,4 +8,8 @@ public sealed class StaticOnlyProvider : IProvider
     {
         return Task.FromResult<RubricResult?>(null);
     }
+
+    public void Dispose()
+    {
+    }
 }
