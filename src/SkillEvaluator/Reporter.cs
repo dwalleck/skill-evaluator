@@ -34,6 +34,18 @@ public static class Reporter
         AppendSection(sb, "Revises", results.Where(r => r.Verdict.Kind == VerdictKind.Revise));
         AppendSection(sb, "Accepts", results.Where(r => r.Verdict.Kind == VerdictKind.Accept));
 
+        sb.AppendLine("## Appendix: Rubric prompt");
+        sb.AppendLine();
+        sb.AppendLine("<details>");
+        sb.AppendLine("<summary>Click to expand</summary>");
+        sb.AppendLine();
+        sb.AppendLine("```");
+        sb.AppendLine(Rubric.SystemPrompt);
+        sb.AppendLine();
+        sb.AppendLine("(User prompt template — see Rubric.cs — substitutes {kind} and {content} per artifact.)");
+        sb.AppendLine("```");
+        sb.AppendLine("</details>");
+
         return sb.ToString();
     }
 
@@ -76,6 +88,37 @@ public static class Reporter
                     sb.AppendLine($"- {icon} `{f.Check}`: {f.Message}");
                 }
                 sb.AppendLine();
+            }
+            if (r.Rubric is { } rubric)
+            {
+                sb.AppendLine("**Rubric scores**:");
+                sb.AppendLine();
+                sb.AppendLine("| Dimension             | Score | Rationale |");
+                sb.AppendLine("|-----------------------|-------|-----------|");
+                foreach (var (key, dim) in rubric.Scores)
+                {
+                    sb.AppendLine($"| {key,-21} | {dim.Score}     | {dim.Rationale} |");
+                }
+                sb.AppendLine();
+
+                if (rubric.TopConcerns.Count > 0)
+                {
+                    sb.AppendLine("**Top concerns**:");
+                    foreach (var c in rubric.TopConcerns)
+                    {
+                        sb.AppendLine($"- {c}");
+                    }
+                    sb.AppendLine();
+                }
+                if (rubric.Strengths.Count > 0)
+                {
+                    sb.AppendLine("**Strengths**:");
+                    foreach (var s in rubric.Strengths)
+                    {
+                        sb.AppendLine($"- {s}");
+                    }
+                    sb.AppendLine();
+                }
             }
             sb.AppendLine("---");
             sb.AppendLine();
