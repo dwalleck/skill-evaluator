@@ -18,6 +18,12 @@ public static class StaticAnalyzer
             findings.AddRange(CheckTokenTier(artifact));
         }
 
+        if (artifact.Kind == ArtifactKind.Instruction)
+        {
+            findings.AddRange(CheckBodyLength(artifact));
+            findings.AddRange(CheckApplyToGlob(artifact));
+        }
+
         var warnings = findings.Count(f => f.Severity == Severity.Warn);
         var score = Math.Max(0, 100 - warnings * 5);
         return new StaticReport(Score: score, Findings: findings);
@@ -71,5 +77,32 @@ public static class StaticAnalyzer
     {
         var fm = string.Join("\n", artifact.Frontmatter.Select(kv => $"{kv.Key}: {kv.Value}"));
         return $"---\n{fm}\n---\n{artifact.Body}";
+    }
+
+    private static IEnumerable<Finding> CheckBodyLength(Artifact artifact)
+    {
+        var lines = artifact.Body.Split('\n').Length;
+        if (lines > 150)
+        {
+            yield return new Finding(Severity.Warn, "BodyLength", $"Body is {lines} lines (>150)");
+        }
+        else if (lines >= 50)
+        {
+            yield return new Finding(Severity.Info, "BodyLength", $"Body is {lines} lines");
+        }
+    }
+
+    private static IEnumerable<Finding> CheckApplyToGlob(Artifact artifact)
+    {
+        if (!artifact.Frontmatter.TryGetValue("applyTo", out var val) || val is not string glob)
+        {
+            yield break;
+        }
+
+        var trimmed = glob.Trim();
+        if (trimmed is "**/*" or "**")
+        {
+            yield return new Finding(Severity.Warn, "ApplyToGlobValidity", $"Overly broad applyTo glob: {glob}");
+        }
     }
 }

@@ -77,4 +77,39 @@ public sealed class StaticAnalyzerTests
         await Assert.That(finding.Message).Contains(expectedTier);
         await Assert.That(finding.Severity).IsEqualTo(expectedSeverity);
     }
+
+    [Test]
+    public async Task BodyLength_warns_over_150_lines()
+    {
+        var body = string.Join("\n", Enumerable.Repeat("line", 160));
+        var artifact = new Artifact(
+            Kind: ArtifactKind.Instruction,
+            Name: "x",
+            Path: "/tmp/x.instructions.md",
+            Frontmatter: new Dictionary<string, object> { ["description"] = "d", ["applyTo"] = "**/*.cs" },
+            Body: body,
+            ReferencedFiles: []
+        );
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        await Assert.That(report.Findings).Contains(f => f.Check == "BodyLength" && f.Severity == Severity.Warn);
+    }
+
+    [Test]
+    public async Task ApplyToGlob_warns_on_overly_broad_pattern()
+    {
+        var artifact = new Artifact(
+            Kind: ArtifactKind.Instruction,
+            Name: "x",
+            Path: "/tmp/x.instructions.md",
+            Frontmatter: new Dictionary<string, object> { ["description"] = "d", ["applyTo"] = "**/*" },
+            Body: "body",
+            ReferencedFiles: []
+        );
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        await Assert.That(report.Findings).Contains(f => f.Check == "ApplyToGlobValidity" && f.Severity == Severity.Warn);
+    }
 }
