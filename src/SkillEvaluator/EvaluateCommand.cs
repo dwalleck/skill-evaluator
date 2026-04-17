@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace SkillEvaluator;
@@ -30,8 +33,52 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         CancellationToken cancellationToken
     )
     {
-        await Task.CompletedTask;
-        Console.WriteLine($"path={settings.Path} provider={settings.Provider} out={settings.OutDir}");
+        var artifacts = Discovery.DiscoverAll(settings.Path);
+        if (artifacts.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]No artifacts found under {0}[/]", settings.Path);
+            return 1;
+        }
+
+        Providers.IProvider provider = settings.Provider switch
+        {
+            "none" => new Providers.StaticOnlyProvider(),
+            _      => throw new NotSupportedException($"Provider '{settings.Provider}' not yet wired up."),
+        };
+
+        var sw = Stopwatch.StartNew();
+        var results = new ConcurrentBag<ArtifactResult>();
+
+        await Parallel.ForEachAsync(
+            artifacts,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = settings.Parallel,
+                CancellationToken = cancellationToken,
+            },
+            async (artifact, ct) =>
+            {
+                var staticReport = StaticAnalyzer.Analyze(artifact);
+                RubricResult? rubric = null;
+                if (!staticReport.HasBlocker)
+                {
+                    rubric = await provider.GradeAsync(artifact, rubricPrompt: "", ct);
+                }
+                var verdict = VerdictDeriver.Derive(staticReport, rubric);
+                results.Add(new ArtifactResult(artifact, staticReport, rubric, verdict));
+            }
+        );
+
+        Directory.CreateDirectory(settings.OutDir);
+        var md = Reporter.BuildMarkdown(
+            results.OrderBy(r => r.Artifact.Name).ToList(),
+            provider: settings.Provider,
+            model: null,
+            duration: sw.Elapsed
+        );
+        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, cancellationToken);
+
+        Console.WriteLine($"Wrote {results.Count} verdicts to {settings.OutDir}/report.md in {sw.Elapsed.TotalSeconds:F1}s");
         return 0;
     }
 }
