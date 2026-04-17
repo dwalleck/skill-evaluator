@@ -32,8 +32,10 @@ public sealed class GhModelsProvider : IProvider
 
     private async Task<string> RunAsync(string systemPrompt, string userPrompt, CancellationToken ct)
     {
-        // `gh models run` reads the user prompt from stdin when given '-'.
-        // System prompt goes in via --system-prompt.
+        // `gh models run <model>` reads the user prompt from stdin when no
+        // trailing prompt positional is given. System prompt goes via
+        // --system-prompt. NO_COLOR=1 keeps ANSI escapes out of stderr, which
+        // would otherwise pollute provider_error in the JSON report.
         var psi = new ProcessStartInfo
         {
             FileName = "gh",
@@ -42,6 +44,7 @@ public sealed class GhModelsProvider : IProvider
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.EnvironmentVariables["NO_COLOR"] = "1";
         psi.ArgumentList.Add("models");
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--system-prompt");

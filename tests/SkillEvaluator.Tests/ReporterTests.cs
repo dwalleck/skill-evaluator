@@ -88,6 +88,103 @@ public sealed class ReporterTests
     }
 
     [Test]
+    public async Task TopConcern_prioritizes_blocker_over_rubric_concern()
+    {
+        var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
+            new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" }, "body", []);
+        var rubric = new RubricResult(
+            TriggerClarity:       new DimensionScore(4, ""),
+            ScopeCoherence:       new DimensionScore(4, ""),
+            InstructionalQuality: new DimensionScore(4, ""),
+            Generality:           new DimensionScore(4, ""),
+            SafetyTrust:          new DimensionScore(4, ""),
+            VerdictHint: "accept",
+            TopConcerns: ["rubric concern"],
+            Strengths: [],
+            RawResponse: "{}"
+        );
+        var staticReport = new StaticReport(
+            0,
+            [new Finding(Severity.Blocker, CheckKind.FrontmatterPresent, "static blocker"),
+             new Finding(Severity.Warn, CheckKind.AllCapsRatio, "static warn")]
+        );
+        var results = new[]
+        {
+            new ArtifactResult(artifact, staticReport, rubric, Verdict.Reject(["static blocker"]), null),
+        };
+
+        var md = Reporter.BuildMarkdown(results, "anthropic", null, TimeSpan.Zero);
+
+        // At-a-glance row should show the blocker, not the rubric concern.
+        var atGlanceStart = md.IndexOf("## At a glance", StringComparison.Ordinal);
+        var atGlanceEnd = md.IndexOf("## Rejects", StringComparison.Ordinal);
+        var atGlance = md[atGlanceStart..atGlanceEnd];
+        await Assert.That(atGlance).Contains("static blocker");
+        await Assert.That(atGlance).DoesNotContain("rubric concern");
+    }
+
+    [Test]
+    public async Task TopConcern_falls_back_to_rubric_when_no_blocker()
+    {
+        var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
+            new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" }, "body", []);
+        var rubric = new RubricResult(
+            TriggerClarity:       new DimensionScore(3, ""),
+            ScopeCoherence:       new DimensionScore(4, ""),
+            InstructionalQuality: new DimensionScore(4, ""),
+            Generality:           new DimensionScore(4, ""),
+            SafetyTrust:          new DimensionScore(4, ""),
+            VerdictHint: "revise",
+            TopConcerns: ["rubric concern"],
+            Strengths: [],
+            RawResponse: "{}"
+        );
+        var staticReport = new StaticReport(
+            90,
+            [new Finding(Severity.Warn, CheckKind.AllCapsRatio, "static warn")]
+        );
+        var results = new[]
+        {
+            new ArtifactResult(artifact, staticReport, rubric, Verdict.Revise(3.5, ["rubric concern"]), null),
+        };
+
+        var md = Reporter.BuildMarkdown(results, "anthropic", null, TimeSpan.Zero);
+
+        var atGlanceStart = md.IndexOf("## At a glance", StringComparison.Ordinal);
+        var atGlanceEnd = md.IndexOf("## Revises", StringComparison.Ordinal);
+        var atGlance = md[atGlanceStart..atGlanceEnd];
+        await Assert.That(atGlance).Contains("rubric concern");
+        await Assert.That(atGlance).DoesNotContain("static warn");
+    }
+
+    [Test]
+    public async Task At_a_glance_is_skipped_on_empty_results()
+    {
+        var md = Reporter.BuildMarkdown([], "none", null, TimeSpan.Zero);
+
+        await Assert.That(md).DoesNotContain("## At a glance");
+        await Assert.That(md).Contains("# Skill Evaluator Report");
+    }
+
+    [Test]
+    public async Task Json_omits_rubric_and_provider_error_when_null()
+    {
+        var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
+            new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" }, "body", []);
+        var results = new[]
+        {
+            new ArtifactResult(artifact, new StaticReport(100, []), null, Verdict.Accept(100), null),
+        };
+
+        var json = Reporter.BuildJson(results, "none", null, TimeSpan.Zero);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var artifactEl = doc.RootElement.GetProperty("artifacts")[0];
+        await Assert.That(artifactEl.TryGetProperty("rubric", out _)).IsFalse();
+        await Assert.That(artifactEl.TryGetProperty("provider_error", out _)).IsFalse();
+    }
+
+    [Test]
     public async Task ProviderError_is_surfaced_when_present()
     {
         var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",

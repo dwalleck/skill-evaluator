@@ -170,9 +170,11 @@ public static class StaticAnalyzer
 
     private static IEnumerable<Finding> CheckBodyLength(Artifact artifact)
     {
-        // Count lines without double-counting the trailing empty element when
-        // Body ends in '\n'. TrimEnd('\n') means "150 real lines" reports 150.
-        var lines = artifact.Body.TrimEnd('\n').Split('\n').Length;
+        // Normalize CRLF → LF, then count lines without double-counting the
+        // trailing empty element when Body ends in '\n'. "150 real lines"
+        // reports 150 on both Unix and Windows authored files.
+        var normalized = artifact.Body.Replace("\r\n", "\n");
+        var lines = normalized.TrimEnd('\n').Split('\n').Length;
         if (lines > 150)
         {
             yield return new Finding(Severity.Warn, CheckKind.BodyLength, $"Body is {lines} lines (>150)");

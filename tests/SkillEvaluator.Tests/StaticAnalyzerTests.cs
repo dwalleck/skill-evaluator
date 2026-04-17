@@ -325,4 +325,195 @@ public sealed class StaticAnalyzerTests
         ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
         new Dictionary<string, object> { ["name"] = "x", ["description"] = "demo" + new string('x', 50) },
         body, []);
+
+    [Test]
+    [Arguments("AOT")]
+    [Arguments("NET")]
+    [Arguments("CRLF")]
+    [Arguments("SDK")]
+    [Arguments("JIT")]
+    [Arguments("RFC")]
+    [Arguments("MCP")]
+    public async Task AllCapsRatio_allowlist_protects_technical_initialism(string token)
+    {
+        // Regression guard on the smoke-test fix: if anyone prunes the
+        // allowlist, a 20-word body with just this token and "normal" prose
+        // should still be Info, not Warn.
+        var body = $"Some prose about {token} and how it works in our system here. " +
+                   string.Join(" ", Enumerable.Repeat("word", 15));
+        var artifact = SkillWithBody(body);
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        var finding = report.Findings.Single(f => f.Check == CheckKind.AllCapsRatio);
+        await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
+    }
+
+    [Test]
+    public async Task ImperativeSmellRatio_ignores_fenced_code_blocks()
+    {
+        // 20 imperatives inside a fenced code block plus clean prose must
+        // not trigger the Warn. If we counted them, ratio would be ~167/1000.
+        var codeBlock = "```csharp\n" +
+            string.Join("\n", Enumerable.Repeat("MUST do work here", 20)) +
+            "\n```";
+        var prose = string.Join(" ", Enumerable.Repeat("word", 100));
+        var body = $"{codeBlock}\n\n{prose}";
+        var artifact = SkillWithBody(body);
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        var finding = report.Findings.Single(f => f.Check == CheckKind.ImperativeSmellRatio);
+        await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
+    }
+
+    [Test]
+    public async Task AllCapsRatio_ignores_fenced_code_blocks()
+    {
+        var codeBlock = "```shell\nFOO=BAR BAZ=QUX DOIT HARDER NOW\n```";
+        var prose = string.Join(" ", Enumerable.Repeat("word", 100));
+        var body = $"{codeBlock}\n\n{prose}";
+        var artifact = SkillWithBody(body);
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        var finding = report.Findings.Single(f => f.Check == CheckKind.AllCapsRatio);
+        await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
+    }
+
+    [Test]
+    public async Task InternalLinksResolve_skips_anchor_and_mailto()
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "body");
+            var artifact = new Artifact(
+                ArtifactKind.Skill, "x", skillMd,
+                new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                "See [here](#section) or [email](mailto:test@example.com) or [web](https://example.com).",
+                []);
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.InternalLinksResolve);
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task InternalLinksResolve_handles_title_syntax()
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tmp, "references"));
+            File.WriteAllText(Path.Combine(tmp, "references", "existing.md"), "content");
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "body");
+            var artifact = new Artifact(
+                ArtifactKind.Skill, "x", skillMd,
+                new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                "See [docs](references/existing.md \"The Reference\").",
+                []);
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.InternalLinksResolve);
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task InternalLinksResolve_url_decodes_percent_encoding()
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tmp, "references"));
+            File.WriteAllText(Path.Combine(tmp, "references", "my file.md"), "content");
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "body");
+            var artifact = new Artifact(
+                ArtifactKind.Skill, "x", skillMd,
+                new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                "See [docs](references/my%20file.md).",
+                []);
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.InternalLinksResolve);
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("run.sh", "shell")]
+    [Arguments("build.ts", "typescript")]
+    [Arguments("util.rb", "ruby")]
+    [Arguments("Dockerfile", "shell-or-unknown")]
+    public async Task ScriptInventory_detects_language_by_extension(string filename, string expectedLang)
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var scriptsDir = Path.Combine(tmp, "scripts");
+            Directory.CreateDirectory(scriptsDir);
+            File.WriteAllText(Path.Combine(scriptsDir, filename), "content\n");
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "body");
+            var artifact = new Artifact(
+                ArtifactKind.Skill, "x", skillMd,
+                new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                "body",
+                []);
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            var finding = report.Findings.Single(f => f.Check == CheckKind.ScriptInventory);
+            await Assert.That(finding.Message).Contains(expectedLang);
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ScriptInventory_skips_binary_files()
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var scriptsDir = Path.Combine(tmp, "scripts");
+            Directory.CreateDirectory(scriptsDir);
+            File.WriteAllBytes(Path.Combine(scriptsDir, "icon.png"), [0x89, 0x50, 0x4E, 0x47]);
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "body");
+            var artifact = new Artifact(
+                ArtifactKind.Skill, "x", skillMd,
+                new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                "body",
+                []);
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            var finding = report.Findings.Single(f => f.Check == CheckKind.ScriptInventory);
+            await Assert.That(finding.Message).Contains("binary, skipped");
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
 }
