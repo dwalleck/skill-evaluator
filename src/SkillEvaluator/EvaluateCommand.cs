@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -40,7 +41,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         var artifacts = Discovery.DiscoverAll(settings.Path);
         if (artifacts.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No artifacts found under {0}[/]", settings.Path);
+            AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[red]No artifacts found under {0}[/]", settings.Path);
             return 1;
         }
 
@@ -76,11 +77,11 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine("[red]Failed to create output directory {0}: {1}[/]", settings.OutDir, ex.Message);
+            AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[red]Failed to create output directory {0}: {1}[/]", settings.OutDir, ex.Message);
             return 2;
         }
 
-        var ordered = results.OrderBy(r => r.Artifact.Name).ToList();
+        var ordered = results.OrderBy(r => r.Artifact.Name, StringComparer.Ordinal).ToList();
         // Each report is written independently so a failure on one doesn't
         // destroy the other — a costly LLM run should never be discarded
         // because disk ran out partway through a second write.
@@ -110,7 +111,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine("[red]Failed to build {0}: {1}[/]", path, ex.Message);
+            AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[red]Failed to build {0}: {1}[/]", path, ex.Message);
             return;
         }
 
@@ -122,7 +123,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AnsiConsole.MarkupLine("[red]Failed to write {0}: {1}[/]", path, ex.Message);
+            AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[red]Failed to write {0}: {1}[/]", path, ex.Message);
         }
     }
 

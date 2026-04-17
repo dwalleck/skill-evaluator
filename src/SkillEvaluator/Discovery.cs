@@ -8,16 +8,20 @@ public static class Discovery
 {
     private static readonly IDeserializer s_yaml = new DeserializerBuilder().Build();
 
+    private static readonly TimeSpan s_regexTimeout = TimeSpan.FromSeconds(1);
+
     // Matches `---` delimited YAML frontmatter. Tolerates CRLF line endings by
     // using `\r?\n`; the final body anchor uses `.*` with RegexOptions.Singleline
     // so body content can span lines.
     private static readonly Regex s_frontmatterRx = new(
         @"^---\s*\r?\n(?<yaml>.*?)\r?\n---\s*\r?\n?(?<body>.*)$",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.Singleline | RegexOptions.Compiled,
+        s_regexTimeout);
 
     private static readonly Regex s_referenceRx = new(
         @"(?:^|[\s(`])(?<path>(?:scripts|references|assets)/[A-Za-z0-9_./-]+)",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        s_regexTimeout);
 
     public static IReadOnlyList<Artifact> DiscoverAll(string root)
     {
@@ -126,7 +130,7 @@ public static class Discovery
         var match = s_frontmatterRx.Match(raw);
         if (!match.Success)
         {
-            return (new Dictionary<string, object>(), raw);
+            return (new Dictionary<string, object>(StringComparer.Ordinal), raw);
         }
 
         var yamlText = match.Groups["yaml"].Value;
@@ -142,10 +146,10 @@ public static class Discovery
             // Malformed YAML on a single file must not crash the whole discovery
             // pass. FrontmatterPresent will surface blockers because required keys
             // are absent; the body is still accessible.
-            return (new Dictionary<string, object>(), body);
+            return (new Dictionary<string, object>(StringComparer.Ordinal), body);
         }
 
-        return (parsed ?? new Dictionary<string, object>(), body);
+        return (parsed ?? new Dictionary<string, object>(StringComparer.Ordinal), body);
     }
 
     private static IReadOnlyList<string> FindReferencedFiles(string body, string skillDir)

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -34,7 +35,7 @@ public static class Reporter
         );
 
         var artifacts = results
-            .OrderBy(r => r.Artifact.Name)
+            .OrderBy(r => r.Artifact.Name, StringComparer.Ordinal)
             .Select(ToJsonArtifact)
             .ToList();
 
@@ -62,16 +63,14 @@ public static class Reporter
         ),
         Static: new JsonStatic(
             Score: r.Static.Score,
-            Findings: r.Static.Findings
-                .Select(f => new JsonFinding(f.Severity, f.Check, f.Message))
-                .ToList()
+            Findings: [.. r.Static.Findings.Select(f => new JsonFinding(f.Severity, f.Check, f.Message))]
         ),
         Rubric: r.Rubric is null ? null : new JsonRubric(
-            TriggerClarity:       ToJsonDim(r.Rubric.TriggerClarity),
-            ScopeCoherence:       ToJsonDim(r.Rubric.ScopeCoherence),
+            TriggerClarity: ToJsonDim(r.Rubric.TriggerClarity),
+            ScopeCoherence: ToJsonDim(r.Rubric.ScopeCoherence),
             InstructionalQuality: ToJsonDim(r.Rubric.InstructionalQuality),
-            Generality:           ToJsonDim(r.Rubric.Generality),
-            SafetyTrust:          ToJsonDim(r.Rubric.SafetyTrust),
+            Generality: ToJsonDim(r.Rubric.Generality),
+            SafetyTrust: ToJsonDim(r.Rubric.SafetyTrust),
             VerdictHint: r.Rubric.VerdictHint,
             TopConcerns: r.Rubric.TopConcerns,
             Strengths: r.Rubric.Strengths
@@ -151,12 +150,13 @@ public static class Reporter
         TimeSpan duration)
     {
         var sb = new StringBuilder();
+        var inv = CultureInfo.InvariantCulture;
         sb.AppendLine("# Skill Evaluator Report");
         sb.AppendLine();
-        sb.AppendLine($"- **Generated**: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
-        sb.AppendLine($"- **Provider**: {provider}{(model is null ? "" : $" ({model})")}");
-        sb.AppendLine($"- **Artifacts**: {results.Count}");
-        sb.AppendLine($"- **Duration**: {duration.TotalSeconds:F0}s");
+        sb.AppendLine(inv, $"- **Generated**: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
+        sb.AppendLine(inv, $"- **Provider**: {provider}{(model is null ? "" : $" ({model})")}");
+        sb.AppendLine(inv, $"- **Artifacts**: {results.Count}");
+        sb.AppendLine(inv, $"- **Duration**: {duration.TotalSeconds:F0}s");
         sb.AppendLine();
         sb.AppendLine("## Summary");
         sb.AppendLine();
@@ -165,9 +165,9 @@ public static class Reporter
         var rejects = results.Count(r => r.Verdict.Kind == VerdictKind.Reject);
         sb.AppendLine("| Verdict   | Count |");
         sb.AppendLine("|-----------|-------|");
-        sb.AppendLine($"| ✅ Accept | {accepts}     |");
-        sb.AppendLine($"| 🔧 Revise | {revises}     |");
-        sb.AppendLine($"| ❌ Reject | {rejects}     |");
+        sb.AppendLine(inv, $"| ✅ Accept | {accepts}     |");
+        sb.AppendLine(inv, $"| 🔧 Revise | {revises}     |");
+        sb.AppendLine(inv, $"| ❌ Reject | {rejects}     |");
         sb.AppendLine();
 
         AppendAtAGlance(sb, results);
@@ -213,10 +213,10 @@ public static class Reporter
                 VerdictKind.Accept => "✅",
                 VerdictKind.Revise => "🔧",
                 VerdictKind.Reject => "❌",
-                _                  => "?",
+                _ => "?",
             };
             var topConcern = GetTopConcern(r);
-            sb.AppendLine($"| {name} | {kind} | {staticScore} | {rubricCell} | {verdictIcon} {r.Verdict.Kind} | {topConcern} |");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"| {name} | {kind} | {staticScore} | {rubricCell} | {verdictIcon} {r.Verdict.Kind} | {topConcern} |");
         }
         sb.AppendLine();
     }
@@ -274,8 +274,8 @@ public static class Reporter
                     var icon = f.Severity switch
                     {
                         Severity.Blocker => "🛑",
-                        Severity.Warn    => "⚠",
-                        _                => "ℹ",
+                        Severity.Warn => "⚠",
+                        _ => "ℹ",
                     };
                     sb.AppendLine($"- {icon} `{f.Check}`: {f.Message}");
                 }
@@ -296,11 +296,11 @@ public static class Reporter
                 sb.AppendLine();
                 sb.AppendLine("| Dimension             | Score | Rationale |");
                 sb.AppendLine("|-----------------------|-------|-----------|");
-                AppendDimension(sb, "trigger_clarity",       rubric.TriggerClarity);
-                AppendDimension(sb, "scope_coherence",       rubric.ScopeCoherence);
+                AppendDimension(sb, "trigger_clarity", rubric.TriggerClarity);
+                AppendDimension(sb, "scope_coherence", rubric.ScopeCoherence);
                 AppendDimension(sb, "instructional_quality", rubric.InstructionalQuality);
-                AppendDimension(sb, "generality",            rubric.Generality);
-                AppendDimension(sb, "safety_trust",          rubric.SafetyTrust);
+                AppendDimension(sb, "generality", rubric.Generality);
+                AppendDimension(sb, "safety_trust", rubric.SafetyTrust);
                 sb.AppendLine();
 
                 if (rubric.TopConcerns.Count > 0)
@@ -330,7 +330,7 @@ public static class Reporter
     private static void AppendDimension(StringBuilder sb, string key, DimensionScore dim)
     {
         // Escape pipes in rationales so they don't break the markdown table row.
-        var safeRationale = dim.Rationale.Replace("|", "\\|");
-        sb.AppendLine($"| {key,-21} | {dim.Score}     | {safeRationale} |");
+        var safeRationale = dim.Rationale.Replace("|", "\\|", StringComparison.Ordinal);
+        sb.AppendLine(CultureInfo.InvariantCulture, $"| {key,-21} | {dim.Score}     | {safeRationale} |");
     }
 }

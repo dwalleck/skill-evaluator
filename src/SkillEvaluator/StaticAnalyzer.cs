@@ -27,7 +27,7 @@ public static class StaticAnalyzer
 
     private static readonly Regex s_imperativeRx = new(
         @"\b(MUST|NEVER|ALWAYS|REQUIRED)\b",
-        RegexOptions.Compiled,
+        RegexOptions.Compiled | RegexOptions.ExplicitCapture,
         s_regexTimeout);
 
     private static readonly Regex s_allCapsRx = new(
@@ -73,9 +73,9 @@ public static class StaticAnalyzer
         (new(@"shell\s*=\s*True", RegexOptions.Compiled, s_regexTimeout), "shell=True"),
         (new(@"\bos\.system\s*\(", RegexOptions.Compiled, s_regexTimeout), "os.system"),
         (new(@"^\s*import\s+(requests|urllib|http\.client|socket)\b",
-            RegexOptions.Compiled | RegexOptions.Multiline, s_regexTimeout), "network-import"),
+            RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.ExplicitCapture, s_regexTimeout), "network-import"),
         (new(@"^\s*from\s+(requests|urllib|http\.client|socket)\s+import\b",
-            RegexOptions.Compiled | RegexOptions.Multiline, s_regexTimeout), "network-import"),
+            RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.ExplicitCapture, s_regexTimeout), "network-import"),
     ];
 
     // Binary / non-text extensions we skip in ScriptInventory so we don't try
@@ -279,7 +279,7 @@ public static class StaticAnalyzer
         var inFence = false;
         foreach (var line in body.Split('\n'))
         {
-            if (line.TrimStart().StartsWith("```"))
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
             {
                 inFence = !inFence;
                 continue;
@@ -478,7 +478,7 @@ public static class StaticAnalyzer
             var flags = s_scriptFlags
                 .Where(f => SafeIsMatch(f.Rx, text))
                 .Select(f => f.Flag)
-                .Distinct()
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
 
             var flagText = flags.Count == 0 ? "no flags" : string.Join(", ", flags);

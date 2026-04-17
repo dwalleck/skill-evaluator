@@ -116,7 +116,7 @@ public static class Rubric
 
         // Only strip fences when both appear — avoids mangling responses that
         // happen to start or end with ``` but aren't actually fenced.
-        if (!trimmed.StartsWith("```") || !trimmed.EndsWith("```"))
+        if (!trimmed.StartsWith("```", StringComparison.Ordinal) || !trimmed.EndsWith("```", StringComparison.Ordinal))
         {
             return trimmed;
         }
