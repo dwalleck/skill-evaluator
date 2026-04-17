@@ -53,4 +53,28 @@ public sealed class StaticAnalyzerTests
 
         await Assert.That(report.HasBlocker).IsFalse();
     }
+
+    [Test]
+    [Arguments(200, "compact", Severity.Info)]
+    [Arguments(1500, "detailed", Severity.Info)]
+    [Arguments(3000, "standard", Severity.Warn)]
+    [Arguments(6000, "comprehensive", Severity.Blocker)]
+    public async Task TokenTier_classifies_by_count(int targetTokens, string expectedTier, Severity expectedSeverity)
+    {
+        var body = string.Join(" ", Enumerable.Repeat("word", targetTokens));
+        var artifact = new Artifact(
+            Kind: ArtifactKind.Skill,
+            Name: "x",
+            Path: "/tmp/x/SKILL.md",
+            Frontmatter: new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+            Body: body,
+            ReferencedFiles: []
+        );
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        var finding = report.Findings.Single(f => f.Check == "TokenTier");
+        await Assert.That(finding.Message).Contains(expectedTier);
+        await Assert.That(finding.Severity).IsEqualTo(expectedSeverity);
+    }
 }
