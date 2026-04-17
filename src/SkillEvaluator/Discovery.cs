@@ -42,7 +42,47 @@ public static class Discovery
             }
         }
 
+        var instructionsDir = Path.Combine(root, "instructions");
+        if (Directory.Exists(instructionsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(instructionsDir, "*.instructions.md"))
+            {
+                artifacts.Add(ParseFlatFile(file, ArtifactKind.Instruction));
+            }
+        }
+
+        var agentsDir = Path.Combine(root, "agents");
+        if (Directory.Exists(agentsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(agentsDir, "*.agent.md"))
+            {
+                artifacts.Add(ParseFlatFile(file, ArtifactKind.Agent));
+            }
+        }
+
         return artifacts;
+    }
+
+    private static Artifact ParseFlatFile(string path, ArtifactKind kind)
+    {
+        var raw = File.ReadAllText(path);
+        var (frontmatter, body) = SplitFrontmatter(raw);
+        var fileName = Path.GetFileName(path);
+        var name = kind switch
+        {
+            ArtifactKind.Instruction => fileName.Replace(".instructions.md", ""),
+            ArtifactKind.Agent       => fileName.Replace(".agent.md", ""),
+            _                        => fileName,
+        };
+
+        return new Artifact(
+            Kind: kind,
+            Name: name,
+            Path: path,
+            Frontmatter: frontmatter,
+            Body: body,
+            ReferencedFiles: []
+        );
     }
 
     private static Artifact ParseSkill(string skillMdPath)
