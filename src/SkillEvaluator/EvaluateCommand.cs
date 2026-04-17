@@ -70,21 +70,60 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
             wasCancelled = true;
         }
 
-        Directory.CreateDirectory(settings.OutDir);
-        var ordered = results.OrderBy(r => r.Artifact.Name).ToList();
-        var md = Reporter.BuildMarkdown(ordered, settings.Provider, settings.Model, sw.Elapsed);
-        var json = Reporter.BuildJson(ordered, settings.Provider, settings.Model, sw.Elapsed);
+        try
+        {
+            Directory.CreateDirectory(settings.OutDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to create output directory {0}: {1}[/]", settings.OutDir, ex.Message);
+            return 2;
+        }
 
-        // Write with CancellationToken.None so Ctrl-C doesn't discard the
-        // partial report we just built from results already in hand.
-        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, CancellationToken.None);
-        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.json"), json, CancellationToken.None);
+        var ordered = results.OrderBy(r => r.Artifact.Name).ToList();
+        // Each report is written independently so a failure on one doesn't
+        // destroy the other — a costly LLM run should never be discarded
+        // because disk ran out partway through a second write.
+        await TryWriteReport(
+            Path.Combine(settings.OutDir, "report.md"),
+            () => Reporter.BuildMarkdown(ordered, settings.Provider, settings.Model, sw.Elapsed)
+        );
+        await TryWriteReport(
+            Path.Combine(settings.OutDir, "report.json"),
+            () => Reporter.BuildJson(ordered, settings.Provider, settings.Model, sw.Elapsed)
+        );
 
         var completed = results.Count;
         var total = artifacts.Count;
         var prefix = wasCancelled ? "Cancelled after " : "Wrote ";
         Console.WriteLine($"{prefix}{completed}/{total} verdicts to {settings.OutDir}/ in {sw.Elapsed.TotalSeconds:F1}s");
+        // 130 = 128 + SIGINT, conventional shell exit code for Ctrl-C.
         return wasCancelled ? 130 : 0;
+    }
+
+    private static async Task TryWriteReport(string path, Func<string> build)
+    {
+        string content;
+        try
+        {
+            content = build();
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to build {0}: {1}[/]", path, ex.Message);
+            return;
+        }
+
+        try
+        {
+            // CancellationToken.None so Ctrl-C doesn't discard the partial
+            // report we just built from results already in hand.
+            await File.WriteAllTextAsync(path, content, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLine("[red]Failed to write {0}: {1}[/]", path, ex.Message);
+        }
     }
 
     private static async Task<ArtifactResult> GradeArtifact(

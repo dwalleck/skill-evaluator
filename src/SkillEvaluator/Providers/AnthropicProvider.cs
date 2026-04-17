@@ -30,7 +30,18 @@ public sealed class AnthropicProvider : IProvider, IDisposable
 
     public async Task<RubricResult?> GradeAsync(Artifact artifact, string rubricPrompt, CancellationToken ct)
     {
-        var raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        string raw;
+        try
+        {
+            raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        }
+        catch (Exception ex) when (ArtifactText.IsTransientHttpError(ex))
+        {
+            // One retry on 408/429/5xx — no prompt change.
+            await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
+            raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        }
+
         try
         {
             return Rubric.ParseResponse(raw);
@@ -72,9 +83,12 @@ public sealed class AnthropicProvider : IProvider, IDisposable
         {
             // Anthropic returns structured error JSON; include the body so the
             // user sees *why* (bad key, rate limit, overload) instead of just
-            // "Response status code does not indicate success".
+            // "Response status code does not indicate success". The StatusCode
+            // arg is load-bearing: IsTransientHttpError reads it to decide retry.
             throw new HttpRequestException(
-                $"Anthropic API {(int)resp.StatusCode} for artifact '{artifact.Name}': {body}"
+                $"Anthropic API {(int)resp.StatusCode} for artifact '{artifact.Name}': {body}",
+                inner: null,
+                statusCode: resp.StatusCode
             );
         }
 

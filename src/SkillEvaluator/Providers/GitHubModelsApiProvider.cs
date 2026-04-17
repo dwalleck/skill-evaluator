@@ -33,7 +33,17 @@ public sealed class GitHubModelsApiProvider : IProvider, IDisposable
 
     public async Task<RubricResult?> GradeAsync(Artifact artifact, string rubricPrompt, CancellationToken ct)
     {
-        var raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        string raw;
+        try
+        {
+            raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        }
+        catch (Exception ex) when (ArtifactText.IsTransientHttpError(ex))
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
+            raw = await CallOnce(Rubric.SystemPrompt, rubricPrompt, artifact, ct);
+        }
+
         try
         {
             return Rubric.ParseResponse(raw);
@@ -79,8 +89,11 @@ public sealed class GitHubModelsApiProvider : IProvider, IDisposable
 
         if (!resp.IsSuccessStatusCode)
         {
+            // StatusCode is load-bearing: IsTransientHttpError reads it to retry 5xx/429/408.
             throw new HttpRequestException(
-                $"GitHub Models API {(int)resp.StatusCode} for artifact '{artifact.Name}': {body}"
+                $"GitHub Models API {(int)resp.StatusCode} for artifact '{artifact.Name}': {body}",
+                inner: null,
+                statusCode: resp.StatusCode
             );
         }
 

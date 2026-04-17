@@ -23,17 +23,25 @@ public static class StaticAnalyzer
     private const int DescriptionMin = 40;
     private const int DescriptionMax = 500;
 
+    private static readonly TimeSpan s_regexTimeout = TimeSpan.FromSeconds(1);
+
     private static readonly Regex s_imperativeRx = new(
         @"\b(MUST|NEVER|ALWAYS|REQUIRED)\b",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        s_regexTimeout);
 
     private static readonly Regex s_allCapsRx = new(
         @"\b[A-Z]{3,}\b",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        s_regexTimeout);
 
+    // Capture the link target up to whitespace (which starts a `"title"` suffix)
+    // or `)`. This handles `[x](path "title")` and `[x](path)` correctly but
+    // still misses URLs containing whitespace or unbalanced parens — accepted.
     private static readonly Regex s_markdownLinkRx = new(
-        @"\[[^\]]+\]\(([^)]+)\)",
-        RegexOptions.Compiled);
+        @"\[[^\]]+\]\((?<target>[^)\s]+)(?:\s+""[^""]*"")?\)",
+        RegexOptions.Compiled,
+        s_regexTimeout);
 
     // Technical initialisms that read as all-caps but aren't stylistic shouting.
     // Extended after real-world smoke-testing against dotnet/skills: AOT, CRLF,
@@ -55,17 +63,34 @@ public static class StaticAnalyzer
         "CI", "CD", "PR", "SSH", "DNS", "VPN",
     };
 
-    // Script security/behavior heuristics (Info-only).
-    private static readonly (string Pattern, string Flag)[] s_scriptFlags =
+    // Script security/behavior heuristics (Info-only). Compiled with a match
+    // timeout so a pathological no-newline script can't hang the run.
+    private static readonly (Regex Rx, string Flag)[] s_scriptFlags =
     [
-        (@"\beval\s*\(", "eval"),
-        (@"\bexec\s*\(", "exec"),
-        (@"\bsubprocess\b", "subprocess"),
-        (@"shell\s*=\s*True", "shell=True"),
-        (@"\bos\.system\s*\(", "os.system"),
-        (@"^\s*import\s+(requests|urllib|http\.client|socket)\b", "network-import"),
-        (@"^\s*from\s+(requests|urllib|http\.client|socket)\s+import\b", "network-import"),
+        (new(@"\beval\s*\(", RegexOptions.Compiled, s_regexTimeout),    "eval"),
+        (new(@"\bexec\s*\(", RegexOptions.Compiled, s_regexTimeout),    "exec"),
+        (new(@"\bsubprocess\b", RegexOptions.Compiled, s_regexTimeout), "subprocess"),
+        (new(@"shell\s*=\s*True", RegexOptions.Compiled, s_regexTimeout), "shell=True"),
+        (new(@"\bos\.system\s*\(", RegexOptions.Compiled, s_regexTimeout), "os.system"),
+        (new(@"^\s*import\s+(requests|urllib|http\.client|socket)\b",
+            RegexOptions.Compiled | RegexOptions.Multiline, s_regexTimeout), "network-import"),
+        (new(@"^\s*from\s+(requests|urllib|http\.client|socket)\s+import\b",
+            RegexOptions.Compiled | RegexOptions.Multiline, s_regexTimeout), "network-import"),
     ];
+
+    // Binary / non-text extensions we skip in ScriptInventory so we don't try
+    // to grep a PNG or wheel for eval/subprocess.
+    private static readonly HashSet<string> s_binaryExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg",
+        ".pdf", ".zip", ".tar", ".gz", ".bz2", ".7z",
+        ".whl", ".wasm", ".dll", ".exe", ".so", ".dylib", ".a", ".o",
+        ".pyc", ".pyo", ".class",
+        ".woff", ".woff2", ".ttf", ".eot", ".otf",
+        ".mp3", ".mp4", ".mov", ".avi", ".webm",
+    };
+
+    private const long MaxScriptBytes = 1 * 1024 * 1024; // 1 MiB
 
     public static StaticReport Analyze(Artifact artifact)
     {
@@ -207,13 +232,16 @@ public static class StaticAnalyzer
 
     private static IEnumerable<Finding> CheckImperativeSmellRatio(Artifact artifact)
     {
-        var wordCount = CountWords(artifact.Body);
+        // Strip fenced code blocks so keywords like MUST in embedded C# / shell
+        // snippets don't count against the author's prose style.
+        var prose = StripFencedCodeBlocks(artifact.Body);
+        var wordCount = CountWords(prose);
         if (wordCount == 0)
         {
             yield break;
         }
 
-        var matches = s_imperativeRx.Matches(artifact.Body).Count;
+        var matches = s_imperativeRx.Matches(prose).Count;
         var ratio = matches * 1000.0 / wordCount;
         var severity = ratio > ImperativeWarnPer1000 ? Severity.Warn : Severity.Info;
         yield return new Finding(
@@ -225,13 +253,14 @@ public static class StaticAnalyzer
 
     private static IEnumerable<Finding> CheckAllCapsRatio(Artifact artifact)
     {
-        var wordCount = CountWords(artifact.Body);
+        var prose = StripFencedCodeBlocks(artifact.Body);
+        var wordCount = CountWords(prose);
         if (wordCount == 0)
         {
             yield break;
         }
 
-        var matches = s_allCapsRx.Matches(artifact.Body)
+        var matches = s_allCapsRx.Matches(prose)
             .Count(m => !s_allCapsAllowlist.Contains(m.Value));
         var ratio = matches * 1000.0 / wordCount;
         var severity = ratio > AllCapsWarnPer1000 ? Severity.Warn : Severity.Info;
@@ -240,6 +269,25 @@ public static class StaticAnalyzer
             "AllCapsRatio",
             $"{ratio:F1} all-caps words per 1000 words ({matches} in {wordCount} words, excluding common initialisms)"
         );
+    }
+
+    private static string StripFencedCodeBlocks(string body)
+    {
+        var sb = new System.Text.StringBuilder();
+        var inFence = false;
+        foreach (var line in body.Split('\n'))
+        {
+            if (line.TrimStart().StartsWith("```"))
+            {
+                inFence = !inFence;
+                continue;
+            }
+            if (!inFence)
+            {
+                sb.Append(line).Append('\n');
+            }
+        }
+        return sb.ToString();
     }
 
     private static IEnumerable<Finding> CheckInternalLinksResolve(Artifact artifact)
@@ -252,7 +300,7 @@ public static class StaticAnalyzer
 
         foreach (Match m in s_markdownLinkRx.Matches(artifact.Body))
         {
-            var target = m.Groups[1].Value.Trim();
+            var target = m.Groups["target"].Value.Trim();
 
             // Skip URLs, anchors, and email/other-scheme links.
             if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
@@ -271,7 +319,38 @@ public static class StaticAnalyzer
                 continue;
             }
 
-            var resolved = Path.Combine(baseDir, pathOnly);
+            // Markdown links URL-encode spaces/unicode; decode before filesystem lookup.
+            string decoded;
+            try
+            {
+                decoded = Uri.UnescapeDataString(pathOnly);
+            }
+            catch (UriFormatException)
+            {
+                decoded = pathOnly;
+            }
+
+            string? resolved = null;
+            string? combineError = null;
+            try
+            {
+                resolved = Path.Combine(baseDir, decoded);
+            }
+            catch (ArgumentException ex)
+            {
+                combineError = ex.Message;
+            }
+
+            if (resolved is null)
+            {
+                yield return new Finding(
+                    Severity.Info,
+                    "InternalLinksResolve",
+                    $"Could not check link (invalid path chars): {target} ({combineError})"
+                );
+                continue;
+            }
+
             if (!File.Exists(resolved) && !Directory.Exists(resolved))
             {
                 yield return new Finding(
@@ -297,8 +376,68 @@ public static class StaticAnalyzer
             yield break;
         }
 
-        foreach (var file in Directory.EnumerateFiles(scriptsDir, "*", SearchOption.AllDirectories))
+        // Materialize the enumeration up front so a permissions exception
+        // on one subdirectory doesn't short-circuit the yield iterator and
+        // discard the findings we've already produced.
+        List<string>? files = null;
+        string? enumError = null;
+        try
         {
+            files = Directory.EnumerateFiles(scriptsDir, "*", SearchOption.AllDirectories).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            enumError = ex.Message;
+        }
+
+        if (files is null)
+        {
+            yield return new Finding(
+                Severity.Warn,
+                "ScriptInventory",
+                $"Could not enumerate scripts/: {enumError}"
+            );
+            yield break;
+        }
+
+        foreach (var file in files)
+        {
+            var relPath = Path.GetRelativePath(skillDir, file);
+            var ext = Path.GetExtension(file);
+
+            if (s_binaryExtensions.Contains(ext))
+            {
+                yield return new Finding(Severity.Info, "ScriptInventory", $"{relPath} (binary, skipped)");
+                continue;
+            }
+
+            long? size = null;
+            string? statError = null;
+            try
+            {
+                size = new FileInfo(file).Length;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                statError = ex.Message;
+            }
+
+            if (size is null)
+            {
+                yield return new Finding(Severity.Info, "ScriptInventory", $"Could not stat {relPath}: {statError}");
+                continue;
+            }
+
+            if (size > MaxScriptBytes)
+            {
+                yield return new Finding(
+                    Severity.Info,
+                    "ScriptInventory",
+                    $"{relPath} (>{MaxScriptBytes / 1024}KiB, skipped)"
+                );
+                continue;
+            }
+
             string? text = null;
             string? readError = null;
             try
@@ -315,13 +454,13 @@ public static class StaticAnalyzer
                 yield return new Finding(
                     Severity.Info,
                     "ScriptInventory",
-                    $"Could not read {Path.GetRelativePath(skillDir, file)}: {readError}"
+                    $"Could not read {relPath}: {readError}"
                 );
                 continue;
             }
 
             var loc = text.TrimEnd('\n').Split('\n').Length;
-            var language = Path.GetExtension(file).ToLowerInvariant() switch
+            var language = ext.ToLowerInvariant() switch
             {
                 ".py"   => "python",
                 ".sh"   => "shell",
@@ -331,11 +470,11 @@ public static class StaticAnalyzer
                 ".go"   => "go",
                 ".rs"   => "rust",
                 ""      => "shell-or-unknown",
-                var ext => ext.TrimStart('.'),
+                var e   => e.TrimStart('.'),
             };
 
             var flags = s_scriptFlags
-                .Where(f => Regex.IsMatch(text, f.Pattern, RegexOptions.Multiline))
+                .Where(f => SafeIsMatch(f.Rx, text))
                 .Select(f => f.Flag)
                 .Distinct()
                 .ToList();
@@ -344,8 +483,20 @@ public static class StaticAnalyzer
             yield return new Finding(
                 Severity.Info,
                 "ScriptInventory",
-                $"{Path.GetRelativePath(skillDir, file)} ({language}, {loc} LOC; {flagText})"
+                $"{relPath} ({language}, {loc} LOC; {flagText})"
             );
+        }
+    }
+
+    private static bool SafeIsMatch(Regex rx, string text)
+    {
+        try
+        {
+            return rx.IsMatch(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
         }
     }
 

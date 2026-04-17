@@ -200,7 +200,8 @@ public static class Reporter
         sb.AppendLine("|----------|------|--------|--------|---------|-------------|");
         foreach (var r in results)
         {
-            var kind = r.Artifact.Kind.ToString().ToLowerInvariant();
+            var name = Escape(r.Artifact.Name);
+            var kind = Escape(r.Artifact.Kind.ToString().ToLowerInvariant());
             var staticScore = r.Static.Score;
             var rubricCell = r.Rubric is null ? "—" : $"{r.Rubric.MinScore}/5 min";
             var verdictIcon = r.Verdict.Kind switch
@@ -211,7 +212,7 @@ public static class Reporter
                 _                  => "?",
             };
             var topConcern = GetTopConcern(r);
-            sb.AppendLine($"| {r.Artifact.Name} | {kind} | {staticScore} | {rubricCell} | {verdictIcon} {r.Verdict.Kind} | {topConcern} |");
+            sb.AppendLine($"| {name} | {kind} | {staticScore} | {rubricCell} | {verdictIcon} {r.Verdict.Kind} | {topConcern} |");
         }
         sb.AppendLine();
     }
