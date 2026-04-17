@@ -36,10 +36,23 @@ public static class StaticAnalyzer
         RegexOptions.Compiled);
 
     // Technical initialisms that read as all-caps but aren't stylistic shouting.
+    // Extended after real-world smoke-testing against dotnet/skills: AOT, CRLF,
+    // NET, SDK, etc. showed up as false positives on legitimate technical content.
     private static readonly HashSet<string> s_allCapsAllowlist = new(StringComparer.Ordinal)
     {
-        "HTTP", "HTTPS", "JSON", "API", "CLI", "URL", "YAML", "MCP",
-        "XML", "HTML", "CSS", "SQL", "JWT", "CSV", "TSV", "UUID", "UTF",
+        // Protocols / formats
+        "HTTP", "HTTPS", "JSON", "YAML", "XML", "HTML", "CSS", "SQL",
+        "CSV", "TSV", "UUID", "UTF", "ASCII", "RFC", "REST", "RPC",
+        // Surfaces
+        "API", "CLI", "URL", "URI", "UI", "GUI", "MCP", "IDE", "OS",
+        // Platform / runtime
+        "NET", "SDK", "JVM", "CPU", "GPU", "RAM", "OS",
+        // Runtime concepts
+        "AOT", "JIT", "TLS", "SSL", "GC", "IO", "DI", "JWT",
+        // Linguistic / format
+        "CRLF", "LF", "BOM", "DTO", "POCO",
+        // VCS / ops
+        "CI", "CD", "PR", "SSH", "DNS", "VPN",
     };
 
     // Script security/behavior heuristics (Info-only).
