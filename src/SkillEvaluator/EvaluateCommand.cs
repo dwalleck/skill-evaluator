@@ -118,9 +118,11 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
 
     private static Providers.IProvider BuildProvider(Settings settings) => settings.Provider switch
     {
-        "none"      => new Providers.StaticOnlyProvider(),
-        "anthropic" => new Providers.AnthropicProvider(settings.Model ?? "claude-sonnet-4-6"),
-        "kiro"      => new Providers.KiroProvider(),
-        _           => throw new NotSupportedException($"Unknown provider: {settings.Provider}"),
+        "none"       => new Providers.StaticOnlyProvider(),
+        "anthropic"  => new Providers.AnthropicProvider(settings.Model ?? "claude-sonnet-4-6"),
+        "kiro"       => new Providers.KiroProvider(),
+        "gh-models"  => new Providers.GhModelsProvider(settings.Model ?? "gpt-4o"),
+        "github-api" => new Providers.GitHubModelsApiProvider(settings.Model ?? "gpt-4o"),
+        _            => throw new NotSupportedException($"Unknown provider: {settings.Provider}"),
     };
 }
