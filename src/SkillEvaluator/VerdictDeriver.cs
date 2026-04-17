@@ -38,11 +38,14 @@ public static class VerdictDeriver
 
         var minDim = rubric.MinScore;
 
-        return (minDim, composite) switch
+        if (minDim < RejectIfAnyDimBelow)
         {
-            ( < RejectIfAnyDimBelow, _)                     => Verdict.Reject(["Rubric dimension scored below 3"]),
-            ( >= MinDimensionForAccept, >= MinCompositeForAccept) => Verdict.Accept(composite),
-            _                                               => Verdict.Revise(composite, rubric.TopConcerns),
-        };
+            return Verdict.Reject(["Rubric dimension scored below 3"]);
+        }
+        if (minDim >= MinDimensionForAccept && composite >= MinCompositeForAccept)
+        {
+            return Verdict.Accept(composite);
+        }
+        return Verdict.Revise(composite, rubric.TopConcerns);
     }
 }

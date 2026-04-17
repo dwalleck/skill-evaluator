@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Text.Json;
 
 namespace SkillEvaluator.Providers;
 
@@ -20,7 +19,7 @@ public sealed class KiroProvider : IProvider
         {
             return Rubric.ParseResponse(output);
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentOutOfRangeException)
+        catch (Exception ex) when (ArtifactText.IsMalformedResponseError(ex))
         {
             var retryPrompt = fullPrompt + "\n\n(Your previous response was malformed. Respond with valid JSON only.)";
             var retryOutput = await RunKiroAsync(retryPrompt, ct);

@@ -57,10 +57,12 @@ public sealed record RubricResult(
     string RawResponse
 )
 {
-    public IEnumerable<DimensionScore> AllDimensions =>
-        [TriggerClarity, ScopeCoherence, InstructionalQuality, Generality, SafetyTrust];
-
-    public int MinScore => AllDimensions.Min(d => d.Score);
+    public int MinScore =>
+        Math.Min(
+            Math.Min(Math.Min(TriggerClarity.Score, ScopeCoherence.Score),
+                     Math.Min(InstructionalQuality.Score, Generality.Score)),
+            SafetyTrust.Score
+        );
 }
 
 public sealed record StaticReport(

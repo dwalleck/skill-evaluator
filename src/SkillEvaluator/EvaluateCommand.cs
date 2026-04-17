@@ -104,15 +104,11 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
             {
                 rubric = await provider.GradeAsync(artifact, Rubric.BuildUserPrompt(artifact), ct);
             }
-            catch (OperationCanceledException)
-            {
-                // Honor cancellation — let Parallel.ForEachAsync tear down.
-                throw;
-            }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Per-artifact failure: capture so the report still contains
                 // the static findings and other artifacts aren't lost.
+                // OperationCanceledException propagates so Parallel.ForEachAsync tears down.
                 providerError = ex.Message;
             }
         }

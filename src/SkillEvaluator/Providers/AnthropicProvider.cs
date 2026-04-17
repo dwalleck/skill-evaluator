@@ -35,7 +35,7 @@ public sealed class AnthropicProvider : IProvider, IDisposable
         {
             return Rubric.ParseResponse(raw);
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentOutOfRangeException)
+        catch (Exception ex) when (ArtifactText.IsMalformedResponseError(ex))
         {
             var retrySystem = Rubric.SystemPrompt +
                 "\nYour previous response was malformed. Respond with valid JSON only.";

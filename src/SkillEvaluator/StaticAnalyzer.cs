@@ -1,5 +1,4 @@
 using Microsoft.ML.Tokenizers;
-using YamlDotNet.Serialization;
 
 namespace SkillEvaluator;
 
@@ -7,8 +6,6 @@ public static class StaticAnalyzer
 {
     private static readonly TiktokenTokenizer s_tokenizer =
         TiktokenTokenizer.CreateForEncoding("cl100k_base");
-
-    private static readonly ISerializer s_yamlSerializer = new SerializerBuilder().Build();
 
     // Token-tier thresholds. Source: design doc
     // (docs/plans/2026-04-16-skill-evaluator-design.md §"Static-check catalog").
@@ -69,7 +66,7 @@ public static class StaticAnalyzer
 
     private static IEnumerable<Finding> CheckTokenTier(Artifact artifact)
     {
-        var fullText = ReassembleArtifactText(artifact);
+        var fullText = artifact.Reassemble();
         var tokens = s_tokenizer.CountTokens(fullText);
 
         var (tier, severity) = tokens switch
@@ -85,15 +82,6 @@ public static class StaticAnalyzer
             Check: "TokenTier",
             Message: $"{tokens} tokens ({tier} tier)"
         );
-    }
-
-    private static string ReassembleArtifactText(Artifact artifact)
-    {
-        // YAML-serialize the frontmatter so list/map values round-trip correctly
-        // instead of becoming `System.Collections.Generic.List`1[System.Object]`
-        // via object.ToString().
-        var yaml = s_yamlSerializer.Serialize(artifact.Frontmatter).TrimEnd();
-        return $"---\n{yaml}\n---\n{artifact.Body}";
     }
 
     private static IEnumerable<Finding> CheckBodyLength(Artifact artifact)

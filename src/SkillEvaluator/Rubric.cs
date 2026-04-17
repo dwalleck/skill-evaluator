@@ -1,5 +1,4 @@
 using System.Text.Json;
-using YamlDotNet.Serialization;
 
 namespace SkillEvaluator;
 
@@ -9,8 +8,6 @@ public static class Rubric
     {
         PropertyNameCaseInsensitive = true,
     };
-
-    private static readonly ISerializer s_yamlSerializer = new SerializerBuilder().Build();
 
     public const string SystemPrompt = """
         You are evaluating a Copilot-format AI agent artifact for acceptance review.
@@ -22,7 +19,7 @@ public static class Rubric
     public static string BuildUserPrompt(Artifact artifact)
     {
         var kind = artifact.Kind.ToString().ToLowerInvariant();
-        var content = ReassembleContent(artifact);
+        var content = artifact.Reassemble();
         return $$"""
             ## Artifact type
             {{kind}}
@@ -72,12 +69,6 @@ public static class Rubric
 
             Return only JSON. No prose, no markdown fences.
             """;
-    }
-
-    private static string ReassembleContent(Artifact artifact)
-    {
-        var yaml = s_yamlSerializer.Serialize(artifact.Frontmatter).TrimEnd();
-        return $"---\n{yaml}\n---\n{artifact.Body}";
     }
 
     public static RubricResult ParseResponse(string raw)
@@ -131,7 +122,7 @@ public static class Rubric
         }
 
         var firstNewline = trimmed.IndexOf('\n');
-        if (firstNewline <= 0)
+        if (firstNewline == -1)
         {
             return trimmed;
         }
