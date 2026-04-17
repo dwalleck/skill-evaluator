@@ -12,6 +12,9 @@
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="2.0.0" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />
     <PackageReference Include="YamlDotNet" Version="17.0.1" />
+    <!-- Override vulnerable transitive Microsoft.Bcl.Memory 9.0.4 pulled in by
+         Microsoft.ML.Tokenizers 2.0.0 (GHSA-73j8-2gch-69rq). -->
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.6" />
   </ItemGroup>
 
 </Project>

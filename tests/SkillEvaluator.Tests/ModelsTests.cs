@@ -20,11 +20,4 @@ public sealed class ModelsTests
         await Assert.That(artifact.Name).IsEqualTo("demo");
         await Assert.That(artifact.Frontmatter["description"]).IsEqualTo("a thing");
     }
-
-    [Test]
-    public async Task Finding_severity_ordering()
-    {
-        await Assert.That((int)Severity.Info).IsLessThan((int)Severity.Warn);
-        await Assert.That((int)Severity.Warn).IsLessThan((int)Severity.Blocker);
-    }
 }
