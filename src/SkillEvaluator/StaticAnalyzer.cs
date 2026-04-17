@@ -24,6 +24,11 @@ public static class StaticAnalyzer
             findings.AddRange(CheckApplyToGlob(artifact));
         }
 
+        if (artifact.Kind == ArtifactKind.Skill)
+        {
+            findings.AddRange(CheckReferencedFilesExist(artifact));
+        }
+
         var warnings = findings.Count(f => f.Severity == Severity.Warn);
         var score = Math.Max(0, 100 - warnings * 5);
         return new StaticReport(Score: score, Findings: findings);
@@ -103,6 +108,21 @@ public static class StaticAnalyzer
         if (trimmed is "**/*" or "**")
         {
             yield return new Finding(Severity.Warn, "ApplyToGlobValidity", $"Overly broad applyTo glob: {glob}");
+        }
+    }
+
+    private static IEnumerable<Finding> CheckReferencedFilesExist(Artifact artifact)
+    {
+        foreach (var referenced in artifact.ReferencedFiles)
+        {
+            if (!File.Exists(referenced))
+            {
+                yield return new Finding(
+                    Severity: Severity.Blocker,
+                    Check: "ReferencedFilesExist",
+                    Message: $"Referenced file does not exist: {referenced}"
+                );
+            }
         }
     }
 }

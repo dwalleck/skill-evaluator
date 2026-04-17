@@ -112,4 +112,32 @@ public sealed class StaticAnalyzerTests
 
         await Assert.That(report.Findings).Contains(f => f.Check == "ApplyToGlobValidity" && f.Severity == Severity.Warn);
     }
+
+    [Test]
+    public async Task ReferencedFilesExist_blocks_on_missing_file()
+    {
+        var tmp = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var skillMd = Path.Combine(tmp, "SKILL.md");
+            File.WriteAllText(skillMd, "---\nname: x\ndescription: d\n---\nUses `scripts/missing.py`");
+            var artifact = new Artifact(
+                Kind: ArtifactKind.Skill,
+                Name: "x",
+                Path: skillMd,
+                Frontmatter: new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" },
+                Body: "Uses `scripts/missing.py`",
+                ReferencedFiles: [Path.Combine(tmp, "scripts/missing.py")]
+            );
+
+            var report = StaticAnalyzer.Analyze(artifact);
+
+            await Assert.That(report.HasBlocker).IsTrue();
+            await Assert.That(report.Findings).Contains(f => f.Check == "ReferencedFilesExist");
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
 }
