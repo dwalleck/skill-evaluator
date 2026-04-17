@@ -114,6 +114,25 @@ public sealed class StaticAnalyzerTests
     }
 
     [Test]
+    public async Task BodyLength_ignores_trailing_newline()
+    {
+        // 150 real lines + trailing '\n' would previously report 151 and warn.
+        var body = string.Join("\n", Enumerable.Repeat("line", 150)) + "\n";
+        var artifact = new Artifact(
+            Kind: ArtifactKind.Instruction,
+            Name: "x",
+            Path: "/tmp/x.instructions.md",
+            Frontmatter: new Dictionary<string, object> { ["description"] = "d", ["applyTo"] = "**/*.cs" },
+            Body: body,
+            ReferencedFiles: []
+        );
+
+        var report = StaticAnalyzer.Analyze(artifact);
+
+        await Assert.That(report.Findings).DoesNotContain(f => f.Check == "BodyLength" && f.Severity == Severity.Warn);
+    }
+
+    [Test]
     public async Task ReferencedFilesExist_blocks_on_missing_file()
     {
         var tmp = Directory.CreateTempSubdirectory().FullName;
