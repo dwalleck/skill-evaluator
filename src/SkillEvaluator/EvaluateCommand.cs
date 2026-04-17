@@ -71,7 +71,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
                     rubric = await provider.GradeAsync(artifact, Rubric.BuildUserPrompt(artifact), ct);
                 }
                 var verdict = VerdictDeriver.Derive(staticReport, rubric);
-                results.Add(new ArtifactResult(artifact, staticReport, rubric, verdict));
+                results.Add(new ArtifactResult(artifact, staticReport, rubric, verdict, ProviderError: null));
             }
         );
 

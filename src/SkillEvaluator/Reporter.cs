@@ -89,16 +89,26 @@ public static class Reporter
                 }
                 sb.AppendLine();
             }
+            if (r.ProviderError is { } err)
+            {
+                sb.AppendLine("**Provider error** (rubric skipped):");
+                sb.AppendLine();
+                sb.AppendLine("```");
+                sb.AppendLine(err);
+                sb.AppendLine("```");
+                sb.AppendLine();
+            }
             if (r.Rubric is { } rubric)
             {
                 sb.AppendLine("**Rubric scores**:");
                 sb.AppendLine();
                 sb.AppendLine("| Dimension             | Score | Rationale |");
                 sb.AppendLine("|-----------------------|-------|-----------|");
-                foreach (var (key, dim) in rubric.Scores)
-                {
-                    sb.AppendLine($"| {key,-21} | {dim.Score}     | {dim.Rationale} |");
-                }
+                AppendDimension(sb, "trigger_clarity",       rubric.TriggerClarity);
+                AppendDimension(sb, "scope_coherence",       rubric.ScopeCoherence);
+                AppendDimension(sb, "instructional_quality", rubric.InstructionalQuality);
+                AppendDimension(sb, "generality",            rubric.Generality);
+                AppendDimension(sb, "safety_trust",          rubric.SafetyTrust);
                 sb.AppendLine();
 
                 if (rubric.TopConcerns.Count > 0)
@@ -123,5 +133,12 @@ public static class Reporter
             sb.AppendLine("---");
             sb.AppendLine();
         }
+    }
+
+    private static void AppendDimension(StringBuilder sb, string key, DimensionScore dim)
+    {
+        // Escape pipes in rationales so they don't break the markdown table row.
+        var safeRationale = dim.Rationale.Replace("|", "\\|");
+        sb.AppendLine($"| {key,-21} | {dim.Score}     | {safeRationale} |");
     }
 }

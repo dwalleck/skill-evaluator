@@ -12,14 +12,11 @@ public sealed class VerdictDeriverTests
 
     private static RubricResult BuildRubric(int common) =>
         new(
-            Scores: new Dictionary<string, DimensionScore>
-            {
-                ["trigger_clarity"]       = new(common, ""),
-                ["scope_coherence"]       = new(common, ""),
-                ["instructional_quality"] = new(common, ""),
-                ["generality"]            = new(common, ""),
-                ["safety_trust"]          = new(common, ""),
-            },
+            TriggerClarity:       new DimensionScore(common, ""),
+            ScopeCoherence:       new DimensionScore(common, ""),
+            InstructionalQuality: new DimensionScore(common, ""),
+            Generality:           new DimensionScore(common, ""),
+            SafetyTrust:          new DimensionScore(common, ""),
             VerdictHint: "accept",
             TopConcerns: [],
             Strengths: [],
@@ -45,14 +42,7 @@ public sealed class VerdictDeriverTests
     {
         var rubric = BuildRubric(5) with
         {
-            Scores = new Dictionary<string, DimensionScore>
-            {
-                ["trigger_clarity"]       = new(2, "weak"),
-                ["scope_coherence"]       = new(5, ""),
-                ["instructional_quality"] = new(5, ""),
-                ["generality"]            = new(5, ""),
-                ["safety_trust"]          = new(5, ""),
-            },
+            TriggerClarity = new DimensionScore(2, "weak"),
         };
         var v = VerdictDeriver.Derive(CleanStatic, rubric);
         await Assert.That(v.Kind).IsEqualTo(VerdictKind.Reject);
@@ -70,14 +60,7 @@ public sealed class VerdictDeriverTests
     {
         var rubric = BuildRubric(4) with
         {
-            Scores = new Dictionary<string, DimensionScore>
-            {
-                ["trigger_clarity"]       = new(3, ""),
-                ["scope_coherence"]       = new(4, ""),
-                ["instructional_quality"] = new(4, ""),
-                ["generality"]            = new(4, ""),
-                ["safety_trust"]          = new(4, ""),
-            },
+            TriggerClarity = new DimensionScore(3, ""),
         };
         var v = VerdictDeriver.Derive(CleanStatic, rubric);
         await Assert.That(v.Kind).IsEqualTo(VerdictKind.Revise);

@@ -37,7 +37,7 @@ public sealed class RubricTests
 
         var result = Rubric.ParseResponse(json);
 
-        await Assert.That(result.Scores["trigger_clarity"].Score).IsEqualTo(5);
+        await Assert.That(result.TriggerClarity.Score).IsEqualTo(5);
         await Assert.That(result.VerdictHint).IsEqualTo("accept");
         await Assert.That(result.Strengths).Contains("good");
     }

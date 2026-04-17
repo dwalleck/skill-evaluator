@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 
 namespace SkillEvaluator;
@@ -6,9 +7,14 @@ namespace SkillEvaluator;
 public static class Discovery
 {
     private static readonly IDeserializer s_yaml = new DeserializerBuilder().Build();
+
+    // Matches `---` delimited YAML frontmatter. Tolerates CRLF line endings by
+    // using `\r?\n`; the final body anchor uses `.*` with RegexOptions.Singleline
+    // so body content can span lines.
     private static readonly Regex s_frontmatterRx = new(
-        @"^---\s*\n(?<yaml>.*?)\n---\s*\n(?<body>.*)$",
+        @"^---\s*\r?\n(?<yaml>.*?)\r?\n---\s*\r?\n?(?<body>.*)$",
         RegexOptions.Singleline | RegexOptions.Compiled);
+
     private static readonly Regex s_referenceRx = new(
         @"(?:^|[\s(`])(?<path>(?:scripts|references|assets)/[A-Za-z0-9_./-]+)",
         RegexOptions.Compiled);
@@ -17,22 +23,15 @@ public static class Discovery
     {
         var artifacts = new List<Artifact>();
 
-        var skillsDir = Path.Combine(root, "skills");
+        // Treat `root` as the skills root if it's named "skills"; otherwise
+        // look for a `skills/` subdirectory. Never both — avoids double discovery.
+        var skillsDir = Path.GetFileName(root).Equals("skills", StringComparison.OrdinalIgnoreCase)
+            ? root
+            : Path.Combine(root, "skills");
+
         if (Directory.Exists(skillsDir))
         {
             foreach (var dir in Directory.EnumerateDirectories(skillsDir))
-            {
-                var skillMd = Path.Combine(dir, "SKILL.md");
-                if (File.Exists(skillMd))
-                {
-                    artifacts.Add(ParseSkill(skillMd));
-                }
-            }
-        }
-
-        if (Path.GetFileName(root).Equals("skills", StringComparison.OrdinalIgnoreCase))
-        {
-            foreach (var dir in Directory.EnumerateDirectories(root))
             {
                 var skillMd = Path.Combine(dir, "SKILL.md");
                 if (File.Exists(skillMd))
@@ -63,31 +62,9 @@ public static class Discovery
         return artifacts;
     }
 
-    private static Artifact ParseFlatFile(string path, ArtifactKind kind)
-    {
-        var raw = File.ReadAllText(path);
-        var (frontmatter, body) = SplitFrontmatter(raw);
-        var fileName = Path.GetFileName(path);
-        var name = kind switch
-        {
-            ArtifactKind.Instruction => fileName.Replace(".instructions.md", ""),
-            ArtifactKind.Agent       => fileName.Replace(".agent.md", ""),
-            _                        => fileName,
-        };
-
-        return new Artifact(
-            Kind: kind,
-            Name: name,
-            Path: path,
-            Frontmatter: frontmatter,
-            Body: body,
-            ReferencedFiles: []
-        );
-    }
-
     private static Artifact ParseSkill(string skillMdPath)
     {
-        var raw = File.ReadAllText(skillMdPath);
+        var raw = SafeRead(skillMdPath);
         var (frontmatter, body) = SplitFrontmatter(raw);
         var skillDir = Path.GetDirectoryName(skillMdPath)!;
         var referenced = FindReferencedFiles(body, skillDir);
@@ -105,6 +82,45 @@ public static class Discovery
         );
     }
 
+    private static Artifact ParseFlatFile(string path, ArtifactKind kind)
+    {
+        var raw = SafeRead(path);
+        var (frontmatter, body) = SplitFrontmatter(raw);
+        var fileName = Path.GetFileName(path);
+        var suffix = kind switch
+        {
+            ArtifactKind.Instruction => ".instructions.md",
+            ArtifactKind.Agent       => ".agent.md",
+            _                        => string.Empty,
+        };
+        var name = fileName.EndsWith(suffix, StringComparison.Ordinal)
+            ? fileName[..^suffix.Length]
+            : Path.GetFileNameWithoutExtension(fileName);
+
+        return new Artifact(
+            Kind: kind,
+            Name: name,
+            Path: path,
+            Frontmatter: frontmatter,
+            Body: body,
+            ReferencedFiles: []
+        );
+    }
+
+    private static string SafeRead(string path)
+    {
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Surface as a parseable artifact with no frontmatter; FrontmatterPresent
+            // will raise blockers and include the file path in the report.
+            return $"---\n# IO_ERROR: {ex.Message}\n---\n";
+        }
+    }
+
     private static (IReadOnlyDictionary<string, object> Frontmatter, string Body) SplitFrontmatter(string raw)
     {
         var match = s_frontmatterRx.Match(raw);
@@ -115,8 +131,21 @@ public static class Discovery
 
         var yamlText = match.Groups["yaml"].Value;
         var body = match.Groups["body"].Value;
-        var parsed = s_yaml.Deserialize<Dictionary<string, object>>(yamlText) ?? new Dictionary<string, object>();
-        return (parsed, body);
+
+        Dictionary<string, object>? parsed;
+        try
+        {
+            parsed = s_yaml.Deserialize<Dictionary<string, object>>(yamlText);
+        }
+        catch (YamlException)
+        {
+            // Malformed YAML on a single file must not crash the whole discovery
+            // pass. FrontmatterPresent will surface blockers because required keys
+            // are absent; the body is still accessible.
+            return (new Dictionary<string, object>(), body);
+        }
+
+        return (parsed ?? new Dictionary<string, object>(), body);
     }
 
     private static IReadOnlyList<string> FindReferencedFiles(string body, string skillDir)

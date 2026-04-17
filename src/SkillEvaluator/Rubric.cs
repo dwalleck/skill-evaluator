@@ -1,4 +1,5 @@
 using System.Text.Json;
+using YamlDotNet.Serialization;
 
 namespace SkillEvaluator;
 
@@ -8,6 +9,8 @@ public static class Rubric
     {
         PropertyNameCaseInsensitive = true,
     };
+
+    private static readonly ISerializer s_yamlSerializer = new SerializerBuilder().Build();
 
     public const string SystemPrompt = """
         You are evaluating a Copilot-format AI agent artifact for acceptance review.
@@ -73,60 +76,78 @@ public static class Rubric
 
     private static string ReassembleContent(Artifact artifact)
     {
-        var fm = string.Join("\n", artifact.Frontmatter.Select(kv => $"{kv.Key}: {kv.Value}"));
-        return $"---\n{fm}\n---\n{artifact.Body}";
+        var yaml = s_yamlSerializer.Serialize(artifact.Frontmatter).TrimEnd();
+        return $"---\n{yaml}\n---\n{artifact.Body}";
     }
 
     public static RubricResult ParseResponse(string raw)
     {
         var cleaned = StripFences(raw);
         var dto = JsonSerializer.Deserialize<RubricDto>(cleaned, s_json)
-            ?? throw new InvalidOperationException("Empty rubric response");
+            ?? throw new JsonException("Rubric response deserialized to null.");
 
-        var scores = new Dictionary<string, DimensionScore>
+        var trigger       = RequireDim(dto.trigger_clarity, nameof(dto.trigger_clarity));
+        var scope         = RequireDim(dto.scope_coherence, nameof(dto.scope_coherence));
+        var instructional = RequireDim(dto.instructional_quality, nameof(dto.instructional_quality));
+        var generality    = RequireDim(dto.generality, nameof(dto.generality));
+        var safety        = RequireDim(dto.safety_trust, nameof(dto.safety_trust));
+
+        if (dto.verdict_hint is null)
         {
-            ["trigger_clarity"]       = new(dto.trigger_clarity.score, dto.trigger_clarity.rationale),
-            ["scope_coherence"]       = new(dto.scope_coherence.score, dto.scope_coherence.rationale),
-            ["instructional_quality"] = new(dto.instructional_quality.score, dto.instructional_quality.rationale),
-            ["generality"]            = new(dto.generality.score, dto.generality.rationale),
-            ["safety_trust"]          = new(dto.safety_trust.score, dto.safety_trust.rationale),
-        };
+            throw new JsonException("Rubric response missing required field: verdict_hint.");
+        }
 
         return new RubricResult(
-            Scores: scores,
-            VerdictHint: dto.verdict_hint ?? "revise",
+            TriggerClarity: trigger,
+            ScopeCoherence: scope,
+            InstructionalQuality: instructional,
+            Generality: generality,
+            SafetyTrust: safety,
+            VerdictHint: dto.verdict_hint,
             TopConcerns: dto.top_concerns ?? [],
             Strengths: dto.strengths ?? [],
             RawResponse: raw
         );
     }
 
+    private static DimensionScore RequireDim(DimDto? dim, string fieldName)
+    {
+        if (dim is null)
+        {
+            throw new JsonException($"Rubric response missing required dimension: {fieldName}.");
+        }
+        return new DimensionScore(dim.score, dim.rationale ?? "");
+    }
+
     private static string StripFences(string raw)
     {
         var trimmed = raw.Trim();
-        if (trimmed.StartsWith("```"))
+
+        // Only strip fences when both appear — avoids mangling responses that
+        // happen to start or end with ``` but aren't actually fenced.
+        if (!trimmed.StartsWith("```") || !trimmed.EndsWith("```"))
         {
-            var firstNewline = trimmed.IndexOf('\n');
-            if (firstNewline > 0)
-            {
-                trimmed = trimmed[(firstNewline + 1)..];
-            }
+            return trimmed;
         }
-        if (trimmed.EndsWith("```"))
+
+        var firstNewline = trimmed.IndexOf('\n');
+        if (firstNewline <= 0)
         {
-            trimmed = trimmed[..^3];
+            return trimmed;
         }
-        return trimmed.Trim();
+
+        var inner = trimmed[(firstNewline + 1)..^3];
+        return inner.Trim();
     }
 
-    private sealed record DimDto(int score, string rationale);
+    private sealed record DimDto(int score, string? rationale);
 
     private sealed record RubricDto(
-        DimDto trigger_clarity,
-        DimDto scope_coherence,
-        DimDto instructional_quality,
-        DimDto generality,
-        DimDto safety_trust,
+        DimDto? trigger_clarity,
+        DimDto? scope_coherence,
+        DimDto? instructional_quality,
+        DimDto? generality,
+        DimDto? safety_trust,
         string? verdict_hint,
         List<string>? top_concerns,
         List<string>? strengths

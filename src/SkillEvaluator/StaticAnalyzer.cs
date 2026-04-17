@@ -1,4 +1,5 @@
 using Microsoft.ML.Tokenizers;
+using YamlDotNet.Serialization;
 
 namespace SkillEvaluator;
 
@@ -6,6 +7,15 @@ public static class StaticAnalyzer
 {
     private static readonly TiktokenTokenizer s_tokenizer =
         TiktokenTokenizer.CreateForEncoding("cl100k_base");
+
+    private static readonly ISerializer s_yamlSerializer = new SerializerBuilder().Build();
+
+    // Token-tier thresholds. Source: design doc
+    // (docs/plans/2026-04-16-skill-evaluator-design.md §"Static-check catalog").
+    private const int CompactMax       = 400;   // < 400 tokens = compact (Info)
+    private const int DetailedMax      = 2500;  // [400, 2500] = detailed (Info)
+    private const int StandardMax      = 5000;  // (2500, 5000] = standard (Warn)
+                                                // > 5000 = comprehensive (Blocker)
 
     public static StaticReport Analyze(Artifact artifact)
     {
@@ -64,29 +74,33 @@ public static class StaticAnalyzer
 
         var (tier, severity) = tokens switch
         {
-            < 400 => ("compact", Severity.Info),
-            < 2501 => ("detailed", Severity.Info),
-            < 5001 => ("standard", Severity.Warn),
-            _ => ("comprehensive", Severity.Blocker),
+            < CompactMax  => ("compact", Severity.Info),
+            <= DetailedMax => ("detailed", Severity.Info),
+            <= StandardMax => ("standard", Severity.Warn),
+            _              => ("comprehensive", Severity.Blocker),
         };
 
         yield return new Finding(
             Severity: severity,
             Check: "TokenTier",
-            Message: $"{tokens} tokens ({tier} tier)",
-            Data: new Dictionary<string, object> { ["tokens"] = tokens, ["tier"] = tier }
+            Message: $"{tokens} tokens ({tier} tier)"
         );
     }
 
     private static string ReassembleArtifactText(Artifact artifact)
     {
-        var fm = string.Join("\n", artifact.Frontmatter.Select(kv => $"{kv.Key}: {kv.Value}"));
-        return $"---\n{fm}\n---\n{artifact.Body}";
+        // YAML-serialize the frontmatter so list/map values round-trip correctly
+        // instead of becoming `System.Collections.Generic.List`1[System.Object]`
+        // via object.ToString().
+        var yaml = s_yamlSerializer.Serialize(artifact.Frontmatter).TrimEnd();
+        return $"---\n{yaml}\n---\n{artifact.Body}";
     }
 
     private static IEnumerable<Finding> CheckBodyLength(Artifact artifact)
     {
-        var lines = artifact.Body.Split('\n').Length;
+        // Count lines without double-counting the trailing empty element when
+        // Body ends in '\n'. TrimEnd('\n') means "150 real lines" reports 150.
+        var lines = artifact.Body.TrimEnd('\n').Split('\n').Length;
         if (lines > 150)
         {
             yield return new Finding(Severity.Warn, "BodyLength", $"Body is {lines} lines (>150)");
