@@ -141,7 +141,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity: Severity.Blocker,
-                    Check: "FrontmatterPresent",
+                    Check: CheckKind.FrontmatterPresent,
                     Message: $"Missing required frontmatter field: {key}"
                 );
             }
@@ -163,7 +163,7 @@ public static class StaticAnalyzer
 
         yield return new Finding(
             Severity: severity,
-            Check: "TokenTier",
+            Check: CheckKind.TokenTier,
             Message: $"{tokens} tokens ({tier} tier)"
         );
     }
@@ -175,11 +175,11 @@ public static class StaticAnalyzer
         var lines = artifact.Body.TrimEnd('\n').Split('\n').Length;
         if (lines > 150)
         {
-            yield return new Finding(Severity.Warn, "BodyLength", $"Body is {lines} lines (>150)");
+            yield return new Finding(Severity.Warn, CheckKind.BodyLength, $"Body is {lines} lines (>150)");
         }
         else if (lines >= 50)
         {
-            yield return new Finding(Severity.Info, "BodyLength", $"Body is {lines} lines");
+            yield return new Finding(Severity.Info, CheckKind.BodyLength, $"Body is {lines} lines");
         }
     }
 
@@ -193,7 +193,7 @@ public static class StaticAnalyzer
         var trimmed = glob.Trim();
         if (trimmed is "**/*" or "**")
         {
-            yield return new Finding(Severity.Warn, "ApplyToGlobValidity", $"Overly broad applyTo glob: {glob}");
+            yield return new Finding(Severity.Warn, CheckKind.ApplyToGlobValidity, $"Overly broad applyTo glob: {glob}");
         }
     }
 
@@ -205,7 +205,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity: Severity.Blocker,
-                    Check: "ReferencedFilesExist",
+                    Check: CheckKind.ReferencedFilesExist,
                     Message: $"Referenced file does not exist: {referenced}"
                 );
             }
@@ -222,11 +222,11 @@ public static class StaticAnalyzer
         var length = description.Length;
         if (length < DescriptionMin)
         {
-            yield return new Finding(Severity.Warn, "DescriptionLength", $"Description is {length} chars (<{DescriptionMin})");
+            yield return new Finding(Severity.Warn, CheckKind.DescriptionLength, $"Description is {length} chars (<{DescriptionMin})");
         }
         else if (length > DescriptionMax)
         {
-            yield return new Finding(Severity.Warn, "DescriptionLength", $"Description is {length} chars (>{DescriptionMax})");
+            yield return new Finding(Severity.Warn, CheckKind.DescriptionLength, $"Description is {length} chars (>{DescriptionMax})");
         }
     }
 
@@ -246,7 +246,7 @@ public static class StaticAnalyzer
         var severity = ratio > ImperativeWarnPer1000 ? Severity.Warn : Severity.Info;
         yield return new Finding(
             severity,
-            "ImperativeSmellRatio",
+            CheckKind.ImperativeSmellRatio,
             $"{ratio:F1} imperatives per 1000 words ({matches} of MUST/NEVER/ALWAYS/REQUIRED in {wordCount} words)"
         );
     }
@@ -266,7 +266,7 @@ public static class StaticAnalyzer
         var severity = ratio > AllCapsWarnPer1000 ? Severity.Warn : Severity.Info;
         yield return new Finding(
             severity,
-            "AllCapsRatio",
+            CheckKind.AllCapsRatio,
             $"{ratio:F1} all-caps words per 1000 words ({matches} in {wordCount} words, excluding common initialisms)"
         );
     }
@@ -345,7 +345,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity.Info,
-                    "InternalLinksResolve",
+                    CheckKind.InternalLinksResolve,
                     $"Could not check link (invalid path chars): {target} ({combineError})"
                 );
                 continue;
@@ -355,7 +355,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity.Warn,
-                    "InternalLinksResolve",
+                    CheckKind.InternalLinksResolve,
                     $"Broken relative link: {target}"
                 );
             }
@@ -394,7 +394,7 @@ public static class StaticAnalyzer
         {
             yield return new Finding(
                 Severity.Warn,
-                "ScriptInventory",
+                CheckKind.ScriptInventory,
                 $"Could not enumerate scripts/: {enumError}"
             );
             yield break;
@@ -407,7 +407,7 @@ public static class StaticAnalyzer
 
             if (s_binaryExtensions.Contains(ext))
             {
-                yield return new Finding(Severity.Info, "ScriptInventory", $"{relPath} (binary, skipped)");
+                yield return new Finding(Severity.Info, CheckKind.ScriptInventory, $"{relPath} (binary, skipped)");
                 continue;
             }
 
@@ -424,7 +424,7 @@ public static class StaticAnalyzer
 
             if (size is null)
             {
-                yield return new Finding(Severity.Info, "ScriptInventory", $"Could not stat {relPath}: {statError}");
+                yield return new Finding(Severity.Info, CheckKind.ScriptInventory, $"Could not stat {relPath}: {statError}");
                 continue;
             }
 
@@ -432,7 +432,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity.Info,
-                    "ScriptInventory",
+                    CheckKind.ScriptInventory,
                     $"{relPath} (>{MaxScriptBytes / 1024}KiB, skipped)"
                 );
                 continue;
@@ -453,7 +453,7 @@ public static class StaticAnalyzer
             {
                 yield return new Finding(
                     Severity.Info,
-                    "ScriptInventory",
+                    CheckKind.ScriptInventory,
                     $"Could not read {relPath}: {readError}"
                 );
                 continue;
@@ -482,7 +482,7 @@ public static class StaticAnalyzer
             var flagText = flags.Count == 0 ? "no flags" : string.Join(", ", flags);
             yield return new Finding(
                 Severity.Info,
-                "ScriptInventory",
+                CheckKind.ScriptInventory,
                 $"{relPath} ({language}, {loc} LOC; {flagText})"
             );
         }

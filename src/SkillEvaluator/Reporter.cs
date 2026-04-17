@@ -12,6 +12,10 @@ public static class Reporter
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // snake_case_lower means VerdictKind.Accept → "accept", Severity.Warn →
+        // "warn", CheckKind.FrontmatterPresent → "frontmatter_present" — so the
+        // wire form is centralized here instead of sprinkled .ToString() calls.
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
     };
 
     public static string BuildJson(
@@ -49,17 +53,17 @@ public static class Reporter
 
     private static JsonArtifact ToJsonArtifact(ArtifactResult r) => new(
         Name: r.Artifact.Name,
-        Kind: r.Artifact.Kind.ToString().ToLowerInvariant(),
+        Kind: r.Artifact.Kind,
         Path: r.Artifact.Path,
         Verdict: new JsonVerdict(
-            Kind: r.Verdict.Kind.ToString().ToLowerInvariant(),
+            Kind: r.Verdict.Kind,
             Score: Math.Round(r.Verdict.Score, 2),
             Reasons: r.Verdict.Reasons
         ),
         Static: new JsonStatic(
             Score: r.Static.Score,
             Findings: r.Static.Findings
-                .Select(f => new JsonFinding(f.Severity.ToString().ToLowerInvariant(), f.Check, f.Message))
+                .Select(f => new JsonFinding(f.Severity, f.Check, f.Message))
                 .ToList()
         ),
         Rubric: r.Rubric is null ? null : new JsonRubric(
@@ -100,7 +104,7 @@ public static class Reporter
 
     private sealed record JsonArtifact(
         [property: JsonPropertyName("name")] string Name,
-        [property: JsonPropertyName("kind")] string Kind,
+        [property: JsonPropertyName("kind")] ArtifactKind Kind,
         [property: JsonPropertyName("path")] string Path,
         [property: JsonPropertyName("verdict")] JsonVerdict Verdict,
         [property: JsonPropertyName("static")] JsonStatic Static,
@@ -109,7 +113,7 @@ public static class Reporter
     );
 
     private sealed record JsonVerdict(
-        [property: JsonPropertyName("kind")] string Kind,
+        [property: JsonPropertyName("kind")] VerdictKind Kind,
         [property: JsonPropertyName("score")] double Score,
         [property: JsonPropertyName("reasons")] IReadOnlyList<string> Reasons
     );
@@ -120,8 +124,8 @@ public static class Reporter
     );
 
     private sealed record JsonFinding(
-        [property: JsonPropertyName("severity")] string Severity,
-        [property: JsonPropertyName("check")] string Check,
+        [property: JsonPropertyName("severity")] Severity Severity,
+        [property: JsonPropertyName("check")] CheckKind Check,
         [property: JsonPropertyName("message")] string Message
     );
 

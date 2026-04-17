@@ -7,7 +7,7 @@ public sealed class VerdictDeriverTests
     private static StaticReport CleanStatic => new(Score: 100, Findings: []);
     private static StaticReport WithBlocker => new(
         Score: 0,
-        Findings: [new Finding(Severity.Blocker, "X", "broken")]
+        Findings: [new Finding(Severity.Blocker, CheckKind.FrontmatterPresent, "broken")]
     );
 
     private static RubricResult BuildRubric(int common) =>

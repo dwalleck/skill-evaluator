@@ -24,7 +24,7 @@ public sealed class StaticAnalyzerTests
         var report = StaticAnalyzer.Analyze(artifact);
 
         await Assert.That(report.HasBlocker).IsTrue();
-        await Assert.That(report.Findings).Contains(f => f.Check == "FrontmatterPresent");
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.FrontmatterPresent);
     }
 
     [Test]
@@ -73,7 +73,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        var finding = report.Findings.Single(f => f.Check == "TokenTier");
+        var finding = report.Findings.Single(f => f.Check == CheckKind.TokenTier);
         await Assert.That(finding.Message).Contains(expectedTier);
         await Assert.That(finding.Severity).IsEqualTo(expectedSeverity);
     }
@@ -93,7 +93,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).Contains(f => f.Check == "BodyLength" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.BodyLength && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -110,7 +110,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).Contains(f => f.Check == "ApplyToGlobValidity" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.ApplyToGlobValidity && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -129,7 +129,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).DoesNotContain(f => f.Check == "BodyLength" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.BodyLength && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -152,7 +152,7 @@ public sealed class StaticAnalyzerTests
             var report = StaticAnalyzer.Analyze(artifact);
 
             await Assert.That(report.HasBlocker).IsTrue();
-            await Assert.That(report.Findings).Contains(f => f.Check == "ReferencedFilesExist");
+            await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.ReferencedFilesExist);
         }
         finally
         {
@@ -169,7 +169,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).Contains(f => f.Check == "ImperativeSmellRatio" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.ImperativeSmellRatio && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -180,7 +180,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        var finding = report.Findings.Single(f => f.Check == "ImperativeSmellRatio");
+        var finding = report.Findings.Single(f => f.Check == CheckKind.ImperativeSmellRatio);
         await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
     }
 
@@ -192,7 +192,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        var finding = report.Findings.Single(f => f.Check == "AllCapsRatio");
+        var finding = report.Findings.Single(f => f.Check == CheckKind.AllCapsRatio);
         await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
         await Assert.That(finding.Message).Contains("0.0 all-caps");
     }
@@ -205,7 +205,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).Contains(f => f.Check == "AllCapsRatio" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.AllCapsRatio && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -221,7 +221,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).Contains(f => f.Check == "DescriptionLength" && f.Severity == Severity.Warn);
+        await Assert.That(report.Findings).Contains(f => f.Check == CheckKind.DescriptionLength && f.Severity == Severity.Warn);
     }
 
     [Test]
@@ -235,7 +235,7 @@ public sealed class StaticAnalyzerTests
 
         var report = StaticAnalyzer.Analyze(artifact);
 
-        await Assert.That(report.Findings).DoesNotContain(f => f.Check == "DescriptionLength");
+        await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.DescriptionLength);
     }
 
     [Test]
@@ -254,7 +254,7 @@ public sealed class StaticAnalyzerTests
 
             var report = StaticAnalyzer.Analyze(artifact);
 
-            var findings = report.Findings.Where(f => f.Check == "InternalLinksResolve").ToList();
+            var findings = report.Findings.Where(f => f.Check == CheckKind.InternalLinksResolve).ToList();
             await Assert.That(findings.Count).IsEqualTo(1);
             await Assert.That(findings[0].Message).Contains("references/missing.md");
         }
@@ -282,7 +282,7 @@ public sealed class StaticAnalyzerTests
 
             var report = StaticAnalyzer.Analyze(artifact);
 
-            await Assert.That(report.Findings).DoesNotContain(f => f.Check == "InternalLinksResolve");
+            await Assert.That(report.Findings).DoesNotContain(f => f.Check == CheckKind.InternalLinksResolve);
         }
         finally
         {
@@ -309,7 +309,7 @@ public sealed class StaticAnalyzerTests
 
             var report = StaticAnalyzer.Analyze(artifact);
 
-            var finding = report.Findings.Single(f => f.Check == "ScriptInventory");
+            var finding = report.Findings.Single(f => f.Check == CheckKind.ScriptInventory);
             await Assert.That(finding.Severity).IsEqualTo(Severity.Info);
             await Assert.That(finding.Message).Contains("python");
             await Assert.That(finding.Message).Contains("subprocess");

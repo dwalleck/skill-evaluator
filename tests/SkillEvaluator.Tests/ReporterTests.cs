@@ -56,7 +56,7 @@ public sealed class ReporterTests
         var results = new[]
         {
             new ArtifactResult(skill, new StaticReport(100, []), null, Verdict.Accept(100), null),
-            new ArtifactResult(agent, new StaticReport(90, [new Finding(Severity.Warn, "W", "warned thing")]),
+            new ArtifactResult(agent, new StaticReport(90, [new Finding(Severity.Warn, CheckKind.AllCapsRatio, "warned thing")]),
                 null, Verdict.Revise(90, []), null),
         };
 

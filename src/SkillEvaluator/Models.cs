@@ -14,6 +14,22 @@ public enum Severity
     Blocker = 2,
 }
 
+// Every static check the analyzer can emit. Names stay stable because they
+// appear in report JSON; reporter/tests switch on this instead of strings.
+public enum CheckKind
+{
+    FrontmatterPresent,
+    TokenTier,
+    BodyLength,
+    ApplyToGlobValidity,
+    ReferencedFilesExist,
+    DescriptionLength,
+    ImperativeSmellRatio,
+    AllCapsRatio,
+    InternalLinksResolve,
+    ScriptInventory,
+}
+
 public sealed record Artifact(
     ArtifactKind Kind,
     string Name,
@@ -25,7 +41,7 @@ public sealed record Artifact(
 
 public sealed record Finding(
     Severity Severity,
-    string Check,
+    CheckKind Check,
     string Message
 );
 
