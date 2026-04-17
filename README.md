@@ -1,6 +1,6 @@
 # skill-evaluator
 
-A CLI that evaluates Copilot-format AI agent artifacts — **skills**, **instruction files**, and **agents** — and produces metric-backed **accept / revise / reject** verdicts with cited rationale. Designed for acceptance review of an architect's artifact drop; scoped to under 20 artifacts per run.
+A CLI that evaluates Copilot-format AI agent artifacts — **skills**, **instruction files**, and **agents** — and produces metric-backed **accept / revise / reject** verdicts with cited rationale.
 
 ## What it does
 
