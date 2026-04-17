@@ -25,6 +25,10 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         [CommandOption("--parallel <n>")]
         [Description("Max concurrent rubric calls.")]
         public int Parallel { get; init; } = 8;
+
+        [CommandOption("--model <name>")]
+        [Description("Provider-specific model name.")]
+        public string? Model { get; init; }
     }
 
     protected override async Task<int> ExecuteAsync(
@@ -42,8 +46,9 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
 
         Providers.IProvider provider = settings.Provider switch
         {
-            "none" => new Providers.StaticOnlyProvider(),
-            _      => throw new NotSupportedException($"Provider '{settings.Provider}' not yet wired up."),
+            "none"      => new Providers.StaticOnlyProvider(),
+            "anthropic" => new Providers.AnthropicProvider(new HttpClient(), settings.Model ?? "claude-sonnet-4-6"),
+            _           => throw new NotSupportedException($"Provider '{settings.Provider}' not yet wired up."),
         };
 
         var sw = Stopwatch.StartNew();
@@ -62,7 +67,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
                 RubricResult? rubric = null;
                 if (!staticReport.HasBlocker)
                 {
-                    rubric = await provider.GradeAsync(artifact, rubricPrompt: "", ct);
+                    rubric = await provider.GradeAsync(artifact, Rubric.BuildUserPrompt(artifact), ct);
                 }
                 var verdict = VerdictDeriver.Derive(staticReport, rubric);
                 results.Add(new ArtifactResult(artifact, staticReport, rubric, verdict));
@@ -73,7 +78,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         var md = Reporter.BuildMarkdown(
             results.OrderBy(r => r.Artifact.Name).ToList(),
             provider: settings.Provider,
-            model: null,
+            model: settings.Model,
             duration: sw.Elapsed
         );
         await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, cancellationToken);
