@@ -48,6 +48,7 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         {
             "none"      => new Providers.StaticOnlyProvider(),
             "anthropic" => new Providers.AnthropicProvider(new HttpClient(), settings.Model ?? "claude-sonnet-4-6"),
+            "kiro"      => new Providers.KiroProvider(),
             _           => throw new NotSupportedException($"Provider '{settings.Provider}' not yet wired up."),
         };
 
