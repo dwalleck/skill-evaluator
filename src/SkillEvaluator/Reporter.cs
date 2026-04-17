@@ -166,6 +166,8 @@ public static class Reporter
         sb.AppendLine($"| ❌ Reject | {rejects}     |");
         sb.AppendLine();
 
+        AppendAtAGlance(sb, results);
+
         AppendSection(sb, "Rejects", results.Where(r => r.Verdict.Kind == VerdictKind.Reject));
         AppendSection(sb, "Revises", results.Where(r => r.Verdict.Kind == VerdictKind.Revise));
         AppendSection(sb, "Accepts", results.Where(r => r.Verdict.Kind == VerdictKind.Accept));
@@ -184,6 +186,55 @@ public static class Reporter
 
         return sb.ToString();
     }
+
+    private static void AppendAtAGlance(StringBuilder sb, IReadOnlyList<ArtifactResult> results)
+    {
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        sb.AppendLine("## At a glance");
+        sb.AppendLine();
+        sb.AppendLine("| Artifact | Kind | Static | Rubric | Verdict | Top concern |");
+        sb.AppendLine("|----------|------|--------|--------|---------|-------------|");
+        foreach (var r in results)
+        {
+            var kind = r.Artifact.Kind.ToString().ToLowerInvariant();
+            var staticScore = r.Static.Score;
+            var rubricCell = r.Rubric is null ? "—" : $"{r.Rubric.MinScore}/5 min";
+            var verdictIcon = r.Verdict.Kind switch
+            {
+                VerdictKind.Accept => "✅",
+                VerdictKind.Revise => "🔧",
+                VerdictKind.Reject => "❌",
+                _                  => "?",
+            };
+            var topConcern = GetTopConcern(r);
+            sb.AppendLine($"| {r.Artifact.Name} | {kind} | {staticScore} | {rubricCell} | {verdictIcon} {r.Verdict.Kind} | {topConcern} |");
+        }
+        sb.AppendLine();
+    }
+
+    private static string GetTopConcern(ArtifactResult r)
+    {
+        // Priority: static blocker → rubric top concern → first warning → "—"
+        var blocker = r.Static.Blockers.FirstOrDefault()?.Message;
+        if (blocker is not null)
+        {
+            return Escape(blocker);
+        }
+        var rubricConcern = r.Rubric?.TopConcerns.FirstOrDefault();
+        if (rubricConcern is not null)
+        {
+            return Escape(rubricConcern);
+        }
+        var warn = r.Static.Warnings.FirstOrDefault()?.Message;
+        return warn is null ? "—" : Escape(warn);
+    }
+
+    private static string Escape(string s) =>
+        s.Replace("|", "\\|").Replace("\n", " ");
 
     private static void AppendSection(StringBuilder sb, string title, IEnumerable<ArtifactResult> items)
     {

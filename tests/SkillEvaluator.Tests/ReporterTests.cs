@@ -47,6 +47,28 @@ public sealed class ReporterTests
     }
 
     [Test]
+    public async Task At_a_glance_table_includes_each_artifact()
+    {
+        var skill = new Artifact(ArtifactKind.Skill, "a", "/tmp/a/SKILL.md",
+            new Dictionary<string, object> { ["name"] = "a", ["description"] = "d" }, "body", []);
+        var agent = new Artifact(ArtifactKind.Agent, "b", "/tmp/b.agent.md",
+            new Dictionary<string, object> { ["name"] = "b", ["description"] = "d" }, "body", []);
+        var results = new[]
+        {
+            new ArtifactResult(skill, new StaticReport(100, []), null, Verdict.Accept(100), null),
+            new ArtifactResult(agent, new StaticReport(90, [new Finding(Severity.Warn, "W", "warned thing")]),
+                null, Verdict.Revise(90, []), null),
+        };
+
+        var md = Reporter.BuildMarkdown(results, "none", null, TimeSpan.Zero);
+
+        await Assert.That(md).Contains("## At a glance");
+        await Assert.That(md).Contains("| a | skill |");
+        await Assert.That(md).Contains("| b | agent |");
+        await Assert.That(md).Contains("warned thing");
+    }
+
+    [Test]
     public async Task Json_report_has_schema_version_and_summary_counts()
     {
         var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
