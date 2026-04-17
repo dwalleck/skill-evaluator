@@ -47,6 +47,25 @@ public sealed class ReporterTests
     }
 
     [Test]
+    public async Task Json_report_has_schema_version_and_summary_counts()
+    {
+        var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",
+            new Dictionary<string, object> { ["name"] = "x", ["description"] = "d" }, "body", []);
+        var results = new[]
+        {
+            new ArtifactResult(artifact, new StaticReport(100, []), null, Verdict.Accept(100), ProviderError: null),
+        };
+
+        var json = Reporter.BuildJson(results, "none", null, TimeSpan.FromSeconds(3));
+
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        await Assert.That(root.GetProperty("schema_version").GetInt32()).IsEqualTo(1);
+        await Assert.That(root.GetProperty("summary").GetProperty("by_verdict").GetProperty("accept").GetInt32()).IsEqualTo(1);
+        await Assert.That(root.GetProperty("artifacts")[0].GetProperty("verdict").GetProperty("kind").GetString()).IsEqualTo("accept");
+    }
+
+    [Test]
     public async Task ProviderError_is_surfaced_when_present()
     {
         var artifact = new Artifact(ArtifactKind.Skill, "x", "/tmp/x/SKILL.md",

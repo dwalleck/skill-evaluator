@@ -71,20 +71,19 @@ public sealed class EvaluateCommand : AsyncCommand<EvaluateCommand.Settings>
         }
 
         Directory.CreateDirectory(settings.OutDir);
-        var md = Reporter.BuildMarkdown(
-            results.OrderBy(r => r.Artifact.Name).ToList(),
-            provider: settings.Provider,
-            model: settings.Model,
-            duration: sw.Elapsed
-        );
+        var ordered = results.OrderBy(r => r.Artifact.Name).ToList();
+        var md = Reporter.BuildMarkdown(ordered, settings.Provider, settings.Model, sw.Elapsed);
+        var json = Reporter.BuildJson(ordered, settings.Provider, settings.Model, sw.Elapsed);
+
         // Write with CancellationToken.None so Ctrl-C doesn't discard the
         // partial report we just built from results already in hand.
         await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.md"), md, CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(settings.OutDir, "report.json"), json, CancellationToken.None);
 
         var completed = results.Count;
         var total = artifacts.Count;
         var prefix = wasCancelled ? "Cancelled after " : "Wrote ";
-        Console.WriteLine($"{prefix}{completed}/{total} verdicts to {settings.OutDir}/report.md in {sw.Elapsed.TotalSeconds:F1}s");
+        Console.WriteLine($"{prefix}{completed}/{total} verdicts to {settings.OutDir}/ in {sw.Elapsed.TotalSeconds:F1}s");
         return wasCancelled ? 130 : 0;
     }
 
